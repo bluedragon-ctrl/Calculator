@@ -1,0 +1,33 @@
+{
+  "name": "inside-the-calculator",
+  "version": "0.0.0",
+  "description": "Interactive educational page: zoom from a pocket calculator down to transistors.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bluedragon-ctrl/Calculator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bluedragon-ctrl/Calculator/issues"
+  },
+  "homepage": "https://github.com/bluedragon-ctrl/Calculator#readme",
+  "dependencies": {
+    "postprocessing": "^6.39.6",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/three": "^0.187.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  },
+  "private": true,
+  "type": "module"
+}
