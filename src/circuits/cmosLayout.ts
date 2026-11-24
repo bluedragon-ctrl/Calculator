@@ -1,5 +1,11 @@
-// Generated transistor schematics for CMOS primitives (DESIGN.md §6.3): VDD rail on top,
-// GND rail at the bottom, PMOS pull-up network above the output, NMOS pull-down below.
+// Generated transistor schematics for CMOS primitives (DESIGN.md §6.3, §6.2a): VDD rail on top,
+// GND rail at the bottom, PMOS pull-up network above the output, NMOS pull-down below, and the
+// output's load capacitance hanging from the output to GND.
+//
+// Transistors use the textbook MOSFET symbol: a gate plate, a channel (drawn broken when the
+// transistor is off), drain and source leads that join the channel from the side, and an arrow
+// on the source (out of the channel for NMOS, into it for PMOS, which also has a gate bubble).
+// A small switch icon beside each transistor repeats its state.
 import { inputPins, outputPins } from '../sim/library';
 import { GND, OUT, VDD } from '../sim/switchLevel';
 import type { CmosNet, ComponentDef, Point } from '../sim/types';
@@ -14,6 +20,14 @@ export interface FetLayout {
   x: number;
   y: number;
   half: number;
+  /** Extra outline shapes: source arrow, PMOS gate bubble. */
+  shapes: Point[][];
+  /** Switch icon: closed and open blade, plus the fixed contact. */
+  switchClosed: Point[];
+  switchOpen: Point[];
+  switchTicks: Point[];
+  /** Where the P/N tag goes (left-aligned, vertically centred). */
+  tagAt: Point;
 }
 
 export interface CmosWire {
@@ -24,11 +38,22 @@ export interface CmosWire {
   fet?: number;
 }
 
+/** The output's load capacitance (§6.2a): a faint capacitor from OUT to GND with a charge gauge. */
+export interface CapLayout {
+  x: number;
+  /** Plates: top plate (connected to OUT) and bottom plate (to GND). */
+  plateTop: Point[];
+  plateBottom: Point[];
+  /** Gauge rectangle [x0, y0, x1, y1] (y down); it fills from the bottom as the output charges. */
+  gauge: [number, number, number, number];
+}
+
 export interface CmosLayout {
   width: number;
   height: number;
   fets: FetLayout[];
   wires: CmosWire[];
+  cap: CapLayout;
   labels: { text: string; at: Point }[];
 }
 
@@ -37,9 +62,46 @@ export const FET_HALF = 0.7;
 export const GATE_GAP = 0.4;
 /** Extra offset for the PMOS inversion bubble. */
 export const BUBBLE_R = 0.14;
+/** Drain/source leads run this far right of the channel and join it from the side. */
+export const LEAD_DX = 0.6;
+/** Distance from the channel centre to where the side leads join it. */
+export const STUB_DY = FET_HALF * 0.72;
+/** Horizontal distance between transistors placed side by side. */
+export const FET_DX = 3.2;
 
-export function gateLeadEnd(f: FetLayout): number {
+export function gateLeadEnd(f: { type: 'p' | 'n'; x: number }): number {
   return f.type === 'p' ? f.x - GATE_GAP - 2 * BUBBLE_R : f.x - GATE_GAP;
+}
+
+function circle(cx: number, cy: number, r: number, n = 16): Point[] {
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const a = (i / n) * Math.PI * 2;
+    return [cx + Math.cos(a) * r, cy + Math.sin(a) * r] as Point;
+  });
+}
+
+function fetShapes(type: 'p' | 'n', input: string, id: number, x: number, y: number): FetLayout {
+  const shapes: Point[][] = [];
+  const ax = x + LEAD_DX * 0.5;
+  const a = 0.13;
+  if (type === 'n') {
+    // Source at the bottom; arrow points out of the channel.
+    const ay = y + STUB_DY;
+    shapes.push([[ax - a * 0.6, ay - a], [ax + a * 0.6, ay], [ax - a * 0.6, ay + a]]);
+  } else {
+    // Source at the top; arrow points into the channel. Bubble on the gate.
+    const ay = y - STUB_DY;
+    shapes.push([[ax + a * 0.6, ay - a], [ax - a * 0.6, ay], [ax + a * 0.6, ay + a]]);
+    shapes.push(circle(x - GATE_GAP - BUBBLE_R, y, BUBBLE_R));
+  }
+  const xi = x + LEAD_DX + 0.45;
+  return {
+    id, type, input, x, y, half: FET_HALF, shapes,
+    switchClosed: [[xi, y + 0.45], [xi, y - 0.45]],
+    switchOpen: [[xi, y + 0.45], [xi + 0.4, y - 0.3]],
+    switchTicks: [[xi - 0.15, y - 0.45], [xi + 0.15, y - 0.45]],
+    tagAt: [xi + 0.6, y],
+  };
 }
 
 export function cmosLayout(def: ComponentDef): CmosLayout {
@@ -53,12 +115,19 @@ export function cmosLayout(def: ComponentDef): CmosLayout {
   const yGnd = H - 1;
   const trackX = (i: number) => 1.2 + i * 0.9;
   const x0 = trackX(ins.length) + 2;
-  const dx = 2.8;
 
   const fets: FetLayout[] = [];
   const wires: CmosWire[] = [];
   const counters = { p: 0, n: 0 };
   let maxX = x0;
+  let maxNX = x0;
+
+  /** Leads of one transistor: from the node above, and to the node below (both via the side stubs). */
+  const leads = (id: number, x: number, y: number, top: string, yTop: number, bottom: string, yBottom: number) => {
+    const xl = x + LEAD_DX;
+    wires.push({ node: top, fet: id, points: [[xl, yTop], [xl, y - STUB_DY], [x, y - STUB_DY]] });
+    wires.push({ node: bottom, fet: id, points: [[x, y + STUB_DY], [xl, y + STUB_DY], [xl, yBottom]] });
+  };
 
   const place = (net: CmosNet, top: string, bottom: string, ya: number, yb: number, type: 'p' | 'n') => {
     const leaves = net.kind === 'fet' ? [net] : net.parts;
@@ -68,40 +137,56 @@ export function cmosLayout(def: ComponentDef): CmosLayout {
     const step = (yb - ya) / k;
     if (net.kind === 'parallel') {
       inputsOf.forEach((input, j) => {
-        const x = x0 + j * dx;
+        const x = x0 + j * FET_DX;
         const y = ya + (j + 0.5) * step; // staggered so gate leads never cross a channel
         const id = fets.length;
-        fets.push({ id, type, input, x, y, half: FET_HALF });
-        wires.push({ node: top, fet: id, points: [[x, ya], [x, y - FET_HALF]] });
-        wires.push({ node: bottom, fet: id, points: [[x, y + FET_HALF], [x, yb]] });
+        fets.push(fetShapes(type, input, id, x, y));
+        leads(id, x, y, top, ya, bottom, yb);
         maxX = Math.max(maxX, x);
+        if (type === 'n') maxNX = Math.max(maxNX, x);
       });
-      if (top !== VDD) wires.push({ node: top, points: [[x0, ya], [x0 + (k - 1) * dx, ya]] });
-      if (bottom !== GND) wires.push({ node: bottom, points: [[x0, yb], [x0 + (k - 1) * dx, yb]] });
+      const span = (y: number): Point[] => [[x0 + LEAD_DX, y], [x0 + (k - 1) * FET_DX + LEAD_DX, y]];
+      if (top !== VDD) wires.push({ node: top, points: span(ya) });
+      if (bottom !== GND) wires.push({ node: bottom, points: span(yb) });
     } else {
       let cur = top;
       let curY = ya;
       inputsOf.forEach((input, i) => {
         const y = ya + (i + 0.5) * step;
+        const next = i < k - 1 ? `${type}${++counters[type]}` : bottom;
+        // An internal node sits halfway between this transistor and the next one.
+        const nextY = i < k - 1 ? y + step / 2 : yb;
         const id = fets.length;
-        fets.push({ id, type, input, x: x0, y, half: FET_HALF });
-        wires.push({ node: cur, fet: id, points: [[x0, curY], [x0, y - FET_HALF]] });
-        cur = i < k - 1 ? `${type}${++counters[type]}` : bottom;
-        curY = y + FET_HALF;
+        fets.push(fetShapes(type, input, id, x0, y));
+        leads(id, x0, y, cur, curY, next, nextY);
+        cur = next;
+        curY = nextY;
       });
-      // The last lead runs to the bottom node.
-      const last = fets[fets.length - 1];
-      wires.push({ node: bottom, fet: last.id, points: [[x0, curY], [x0, yb]] });
     }
   };
 
   place(def.cmos.pullUp, VDD, OUT, yVdd, yOut, 'p');
   place(def.cmos.pullDown, OUT, GND, yOut, yGnd, 'n');
 
+  // Load capacitance: right of the pull-down network, from OUT down to GND.
+  const cx = maxNX + LEAD_DX + 2.4;
+  const yMid = (yOut + yGnd) / 2;
+  const gap = 0.22;
+  const plateW = 0.6;
+  const cap: CapLayout = {
+    x: cx,
+    plateTop: [[cx - plateW, yMid - gap], [cx + plateW, yMid - gap]],
+    plateBottom: [[cx - plateW, yMid + gap], [cx + plateW, yMid + gap]],
+    gauge: [cx + plateW + 0.35, yMid - 0.9, cx + plateW + 0.6, yMid + 0.9],
+  };
+  wires.push({ node: OUT, points: [[cx, yOut], [cx, yMid - gap]] });
+  wires.push({ node: GND, points: [[cx, yMid + gap], [cx, yGnd]] });
+
   // Rails and output.
-  wires.push({ node: VDD, points: [[x0 - 1, yVdd], [maxX + 1, yVdd]] });
-  wires.push({ node: GND, points: [[x0 - 1, yGnd], [maxX + 1, yGnd]] });
-  wires.push({ node: OUT, points: [[x0, yOut], [W, yOut]] });
+  const railEnd = Math.max(maxX + LEAD_DX + 1, cx + 0.8);
+  wires.push({ node: VDD, points: [[x0 - 1, yVdd], [railEnd, yVdd]] });
+  wires.push({ node: GND, points: [[x0 - 1, yGnd], [railEnd, yGnd]] });
+  wires.push({ node: OUT, points: [[x0 + LEAD_DX, yOut], [W, yOut]] });
 
   // Gate inputs: pin → track → each gate it drives.
   ins.forEach((pin, i) => {
@@ -119,5 +204,5 @@ export function cmosLayout(def: ComponentDef): CmosLayout {
     { text: 'VDD = 1', at: [x0 - 1.3, yVdd] as Point },
     { text: 'GND = 0', at: [x0 - 1.3, yGnd] as Point },
   ];
-  return { width: W, height: H, fets, wires, labels };
+  return { width: W, height: H, fets, wires, cap, labels };
 }

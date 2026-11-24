@@ -11,6 +11,7 @@ declare module 'troika-three-text' {
     maxWidth: number;
     textAlign: 'left' | 'right' | 'center' | 'justify';
     outlineWidth: number | string;
+    fillOpacity: number;
     outlineColor: string | number | Color;
     sync(callback?: () => void): void;
     dispose(): void;

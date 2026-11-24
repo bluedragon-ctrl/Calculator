@@ -52,3 +52,49 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   padding: 2rem; text-align: center; line-height: 1.5;
 }
 .fallback div { max-width: 32rem; }
+
+/* Breadcrumb (top of the view) */
+.breadcrumb {
+  position: absolute; top: 8px; left: 8px; right: 8px; z-index: 2;
+  display: flex; flex-wrap: nowrap; align-items: center; gap: 3px;
+  font-size: 13px; white-space: nowrap; overflow-x: auto; scrollbar-width: none;
+  pointer-events: none;
+}
+.breadcrumb::-webkit-scrollbar { display: none; }
+.breadcrumb > * { pointer-events: auto; }
+.breadcrumb button {
+  background: rgba(13, 20, 36, 0.85); padding: 2px 7px; border-radius: 4px; flex: none;
+}
+.breadcrumb .sep { color: var(--muted); }
+.breadcrumb .current {
+  padding: 2px 7px; border-radius: 4px; background: rgba(13, 20, 36, 0.85);
+  border: 1px solid var(--accent); color: var(--accent); flex: none;
+}
+
+/* Hover tooltip */
+.tooltip {
+  position: absolute; top: 0; left: 0; z-index: 3; max-width: 300px;
+  padding: 8px 10px; border-radius: 6px; pointer-events: none;
+  background: rgba(13, 20, 36, 0.95); border: 1px solid var(--panel-border);
+  font-size: 13px; line-height: 1.4; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+.tooltip strong { display: block; font-size: 14px; margin-bottom: 2px; }
+.tooltip p { margin: 0 0 4px; color: var(--text); }
+.tooltip .value { font-variant-numeric: tabular-nums; color: var(--accent); }
+.tooltip .hint { margin-top: 4px; color: var(--muted); font-style: italic; }
+
+/* Number panel for buses */
+.bus-grid {
+  display: grid; grid-template-columns: auto auto 1fr; gap: 6px 8px; align-items: center;
+}
+.bus-grid label { font-weight: 600; }
+.bus-grid input {
+  font: inherit; width: 5em; padding: 2px 6px; color: var(--text);
+  background: #0a1120; border: 1px solid var(--panel-border); border-radius: 4px;
+}
+.bus-grid input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.bus-grid code, .bus-grid output { font-variant-numeric: tabular-nums; }
+.bus-grid code { color: var(--muted); letter-spacing: 0.06em; }
+.bus-grid button[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); }
+.overflow-note { min-height: 1.5em; margin: 0.4rem 0 0; color: #ffb347; font-weight: 600; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }

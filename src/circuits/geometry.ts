@@ -26,6 +26,18 @@ export function pinPos(def: ComponentDef, pin: PinDef): Point {
   }
 }
 
+/** Smallest gap between two pins on the same side of a box (box units); 1 if no side has two. */
+export function minPinGap(def: ComponentDef): number {
+  const bySide = new Map<PinDef['side'], number[]>();
+  for (const p of Object.values(def.pins)) bySide.set(p.side, [...(bySide.get(p.side) ?? []), p.at]);
+  let gap = Infinity;
+  for (const ats of bySide.values()) {
+    ats.sort((a, b) => a - b);
+    for (let i = 1; i < ats.length; i++) gap = Math.min(gap, ats[i] - ats[i - 1]);
+  }
+  return Number.isFinite(gap) ? gap : 1;
+}
+
 /** Position of a pin reference inside `def`'s inner frame. */
 export function refPos(def: ComponentDef, ref: string, lib: Library): Point {
   const { part, pin } = splitRef(ref);

@@ -17,6 +17,9 @@ function gatePins(n: number): Record<string, PinDef> {
   return pins;
 }
 
+/** Four transistors side by side need a wider transistor view. */
+const gateWidth = (n: number) => (n >= 4 ? 4 : 3);
+
 const not = (v: boolean): Bit => (v ? 0 : 1);
 
 export const NOT: ComponentDef = {
@@ -36,7 +39,7 @@ function nand(n: number): ComponentDef {
     name: `NAND${n}`,
     title: n === 2 ? 'NAND gate' : `${n}-input NAND gate`,
     blurb: 'Gives 0 only when all inputs are 1. Otherwise it gives 1.',
-    size: [3, n],
+    size: [gateWidth(n), n],
     pins: gatePins(n),
     behavior: { delay: 1, eval: (v) => [not(v.every((x) => x === 1))] },
     cmos: { pullUp: parallel(ins), pullDown: series(ins) },
@@ -50,7 +53,7 @@ function nor(n: number): ComponentDef {
     name: `NOR${n}`,
     title: n === 2 ? 'NOR gate' : `${n}-input NOR gate`,
     blurb: 'Gives 1 only when all inputs are 0. Otherwise it gives 0.',
-    size: [3, n],
+    size: [gateWidth(n), n],
     pins: gatePins(n),
     behavior: { delay: 1, eval: (v) => [not(v.some((x) => x === 1))] },
     cmos: { pullUp: series(ins), pullDown: parallel(ins) },

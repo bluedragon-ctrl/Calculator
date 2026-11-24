@@ -25,8 +25,9 @@ const expected: Record<string, (v: Bit[]) => Bit> = {
 };
 
 describe('truth tables', () => {
-  it('covers every component in the library', () => {
-    expect(Object.keys(expected).sort()).toEqual(library.names().sort());
+  it('covers every gate in the library (adders are tested in adders.test.ts)', () => {
+    const adders = ['HalfAdder', 'FullAdder', 'Adder8', 'AddSub8'];
+    expect([...Object.keys(expected), ...adders].sort()).toEqual(library.names().sort());
   });
 
   for (const [name, fn] of Object.entries(expected)) {

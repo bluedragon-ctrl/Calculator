@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { library } from '../src/circuits/library';
-import { Playback } from '../src/render/playback';
+import { Playback, chargeLevel } from '../src/render/playback';
 import { flatten } from '../src/sim/flatten';
 import { Simulator } from '../src/sim/simulator';
 
@@ -75,5 +75,17 @@ describe('playback', () => {
     expect(pb.value(c.inputs.a)).toBe(0);
     expect(pb.value(c.outputs.y)).toBe(0);
     expect(pb.busy).toBe(false);
+  });
+});
+
+describe('load capacitor charge', () => {
+  it('follows the settled value and charges/drains during a transition', () => {
+    expect(chargeLevel(1, null)).toBe(1);
+    expect(chargeLevel(0, null)).toBe(0);
+    expect(chargeLevel(0, { from: 0, to: 1, progress: 0 })).toBe(0);
+    expect(chargeLevel(0, { from: 0, to: 1, progress: 1 })).toBeCloseTo(1);
+    const half = chargeLevel(0, { from: 0, to: 1, progress: 0.5 });
+    expect(half).toBeGreaterThan(0.5); // fast at first, like charging through a resistor
+    expect(chargeLevel(1, { from: 1, to: 0, progress: 0.5 })).toBeCloseTo(1 - half);
   });
 });

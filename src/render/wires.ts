@@ -8,9 +8,10 @@ import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import type { Bit, Point } from '../sim/types';
 import type { Quality } from '../ui/quality';
+import { fadeObject, type AlphaFn } from './fade';
 import type { Transition } from './playback';
 import {
-  BLOOM_BOOST, CHANNEL_ON, FRAME, GLOW_OPACITY, GLOW_WIDTH, GND_COLOR, OUTLINE, OUTLINE_WIDTH,
+  BLOOM_BOOST, CAP_COLOR, CHANNEL_ON, CHARGE, FRAME, GLOW_OPACITY, GLOW_WIDTH, GND_COLOR, OUTLINE, OUTLINE_WIDTH,
   PATH_GND, PATH_VDD, PATH_WIDTH, SPARK_PX, VDD_COLOR, WIRE_OFF, WIRE_ON, WIRE_WIDTH_OFF,
   WIRE_WIDTH_ON,
 } from './palette';
@@ -44,15 +45,24 @@ export class WireMaterials {
   readonly sparkOn = new MeshBasicMaterial({ color: WIRE_ON.clone().multiplyScalar(BLOOM_BOOST * 2) });
   readonly sparkOff = new MeshBasicMaterial({ color: new Color('#6c7fa8') });
   readonly dot = new MeshBasicMaterial({ color: OUTLINE });
+  /** Load capacitor plates and its charge gauge (§6.2a). */
+  readonly cap = new LineMaterial({ color: CAP_COLOR, linewidth: 2 });
+  readonly charge = new MeshBasicMaterial({ color: CHARGE.clone().multiplyScalar(0.55) });
   /** World units per CSS pixel (updated by the camera), so sparks keep a constant size. */
   worldPerPx = 0.03;
   /** When false (reduced motion), no sparks are drawn. */
   sparks = true;
   private quality: Quality = 'high';
 
+  constructor() {
+    // Transparent so the LOD crossfade can fade single objects (see fade.ts). At full opacity
+    // they look exactly like opaque lines.
+    for (const m of this.lineMaterials) m.transparent = true;
+  }
+
   private get lineMaterials(): LineMaterial[] {
     return [this.off, this.on, this.glow, this.vdd, this.gnd, this.outline, this.frame,
-      this.channelOff, this.channelOn, this.pathVdd, this.pathGnd];
+      this.channelOff, this.channelOn, this.pathVdd, this.pathGnd, this.cap];
   }
 
   setResolution(width: number, height: number): void {
@@ -80,6 +90,7 @@ export class WireMaterials {
     this.sparkOn.dispose();
     this.sparkOff.dispose();
     this.dot.dispose();
+    this.charge.dispose();
   }
 }
 
@@ -89,12 +100,13 @@ function pathMaterial(c: Color): LineMaterial {
   });
 }
 
-/** Build a Line2 from 2D points (y already in world orientation). */
-export function makeLine(points: readonly Point[], mat: LineMaterial, z = 0): Line2 {
+/** Build a Line2 from 2D points (y already in world orientation), optionally fading with `alpha`. */
+export function makeLine(points: readonly Point[], mat: LineMaterial, z = 0, alpha?: AlphaFn): Line2 {
   const geom = new LineGeometry();
   geom.setPositions(points.flatMap(([x, y]) => [x, y, z]));
   const line = new Line2(geom, mat);
   if (mat.dashed) line.computeLineDistances();
+  if (alpha) fadeObject(line, alpha);
   return line;
 }
 
@@ -127,10 +139,11 @@ class Segment {
   readonly core: Line2;
   readonly glow: Line2;
 
-  constructor(points: readonly Point[], private readonly mats: WireMaterials, z: number) {
-    this.core = makeLine(points, mats.off, z);
+  constructor(points: readonly Point[], private readonly mats: WireMaterials, z: number, alpha?: AlphaFn) {
+    this.core = makeLine(points, mats.off, z, alpha);
     this.glow = new Line2(this.core.geometry, mats.glow);
     this.glow.position.z = z - 0.05;
+    if (alpha) fadeObject(this.glow, alpha);
   }
 
   setPoints(points: readonly Point[], z: number): void {
@@ -165,10 +178,15 @@ export class Wire {
    * @param points polyline in the parent's local frame (world orientation, y up)
    * @param worldScale world units per local unit, so sparks keep a constant on-screen size
    */
-  constructor(points: readonly Point[], private readonly mats: WireMaterials, private readonly worldScale = 1) {
+  constructor(
+    points: readonly Point[],
+    private readonly mats: WireMaterials,
+    private readonly worldScale = 1,
+    private readonly alpha?: AlphaFn,
+  ) {
     if (points.length < 2) throw new Error('A wire needs at least two points');
     this.points = points;
-    this.whole = new Segment(points, mats, 0);
+    this.whole = new Segment(points, mats, 0, alpha);
     this.object.add(this.whole.glow, this.whole.core);
     this.length = polylineLength(points);
     this.refresh();
@@ -195,8 +213,8 @@ export class Wire {
     const done: Point[] = [...this.points.slice(0, seg), p];
     const todo: Point[] = [p, ...this.points.slice(seg)];
     if (!this.front || !this.rest) {
-      this.front = new Segment(done, this.mats, 0.01);
-      this.rest = new Segment(todo, this.mats, 0);
+      this.front = new Segment(done, this.mats, 0.01, this.alpha);
+      this.rest = new Segment(todo, this.mats, 0, this.alpha);
       this.object.add(this.front.glow, this.front.core, this.rest.glow, this.rest.core);
     } else {
       this.front.setPoints(done, 0.01);
@@ -206,7 +224,7 @@ export class Wire {
     this.front.show(tr.progress > 0, tr.to);
     this.rest.show(tr.progress < 1, tr.from);
 
-    if (this.mats.sparks) {
+    if (this.mats.sparks && (this.alpha?.() ?? 1) > 0.5) {
       if (!this.spark) {
         this.spark = new Mesh(this.mats.sparkGeom, this.mats.sparkOn);
         this.object.add(this.spark);

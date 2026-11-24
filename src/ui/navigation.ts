@@ -1,5 +1,6 @@
 // Mouse navigation of the chip world: scroll = zoom toward the cursor, drag = pan (DESIGN.md §6.3).
 import type { Stage, View } from '../render/stage';
+import { flightDuration, flightView } from './flight';
 
 const DRAG_THRESHOLD_PX = 4;
 
@@ -8,8 +9,12 @@ export class Navigator {
   private flight: { from: View; to: View; t: number; duration: number } | null = null;
   /** Called with world coordinates on a click that was not a drag. */
   onClick: ((x: number, y: number) => void) | null = null;
-  /** Called with world coordinates when the pointer moves (for hover effects). */
-  onHover: ((x: number, y: number) => void) | null = null;
+  /** Called with world coordinates (and canvas pixels) when the pointer moves. */
+  onHover: ((x: number, y: number, px: number, py: number) => void) | null = null;
+  /** Called with world coordinates on a double-click (fly to fit). */
+  onDoubleClick: ((x: number, y: number) => void) | null = null;
+  /** Called when the pointer leaves the canvas or starts dragging. */
+  onLeave: (() => void) | null = null;
   /** When true, camera moves are instant (prefers-reduced-motion). */
   instant = false;
 
@@ -20,10 +25,20 @@ export class Navigator {
     el.addEventListener('pointermove', (e) => this.move(e));
     el.addEventListener('pointerup', (e) => this.up(e));
     el.addEventListener('pointercancel', () => (this.dragging = null));
+    el.addEventListener('pointerleave', () => this.onLeave?.());
+    el.addEventListener('dblclick', (e) => {
+      const [x, y] = this.local(e);
+      this.onDoubleClick?.(...this.stage.toWorld(x, y));
+    });
   }
 
-  /** Smoothly move the camera to a view. */
-  flyTo(to: View, duration = 0.6): void {
+  /** True while a camera flight is running. */
+  get flying(): boolean {
+    return this.flight !== null;
+  }
+
+  /** Smoothly move the camera to a view (duration defaults to one that suits the zoom change). */
+  flyTo(to: View, duration = flightDuration(this.stage.view.height, to.height)): void {
     if (this.instant || duration <= 0) {
       this.flight = null;
       this.stage.setView(to);
@@ -36,14 +51,7 @@ export class Navigator {
     const f = this.flight;
     if (!f) return;
     f.t = Math.min(f.t + dtSec / f.duration, 1);
-    const e = f.t < 0.5 ? 4 * f.t ** 3 : 1 - (-2 * f.t + 2) ** 3 / 2;
-    // Interpolate zoom logarithmically so the fly feels even across scales.
-    const h = Math.exp(Math.log(f.from.height) + (Math.log(f.to.height) - Math.log(f.from.height)) * e);
-    this.stage.setView({
-      cx: f.from.cx + (f.to.cx - f.from.cx) * e,
-      cy: f.from.cy + (f.to.cy - f.from.cy) * e,
-      height: h,
-    });
+    this.stage.setView(flightView(f.from, f.to, f.t));
     if (f.t >= 1) this.flight = null;
   }
 
@@ -77,10 +85,11 @@ export class Navigator {
     const [x, y] = this.local(e);
     const d = this.dragging;
     if (!d) {
-      this.onHover?.(...this.stage.toWorld(x, y));
+      this.onHover?.(...this.stage.toWorld(x, y), x, y);
       return;
     }
     if (!d.moved && Math.hypot(x - d.x, y - d.y) < DRAG_THRESHOLD_PX) return;
+    if (!d.moved) this.onLeave?.();
     d.moved = true;
     this.flight = null;
     this.stage.renderer.domElement.style.cursor = 'grabbing';
