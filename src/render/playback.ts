@@ -30,9 +30,19 @@ export class Playback {
   /** Called when a net starts changing (for sparks) and when it finishes. */
   onStart: ((net: number, from: Bit, to: Bit) => void) | null = null;
   onSettle: ((net: number, value: Bit) => void) | null = null;
+  private readonly listeners = new Set<(net: number, value: Bit) => void>();
 
   constructor(initial: ArrayLike<number>) {
     this.shown = Uint8Array.from(initial);
+  }
+
+  /**
+   * Call `fn` every time a net's displayed value changes (in timeline order, also when
+   * playing instantly). Returns a function that removes the listener.
+   */
+  listen(fn: (net: number, value: Bit) => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
   }
 
   /** Queue a timeline after anything already playing. */
@@ -112,6 +122,7 @@ export class Playback {
     this.active.delete(net);
     this.shown[net] = v;
     this.onSettle?.(net, v);
+    for (const fn of this.listeners) fn(net, v);
   }
 }
 

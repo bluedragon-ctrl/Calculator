@@ -50,7 +50,14 @@ export interface NetDef {
 export interface Behavior {
   /** Delay in delta steps (DESIGN.md §5.1: every primitive gate has delay 1). */
   delay: number;
-  eval(inputs: readonly Bit[]): Bit[];
+  /** `state` is the stored bit of a clocked leaf (always 0 for plain gates). */
+  eval(inputs: readonly Bit[], state: Bit): Bit[];
+  /**
+   * Rising-edge storage (a behavioural D flip-flop, DESIGN.md §5.3). The simulator keeps one
+   * stored bit per instance and loads it from input `d` on every clock tick; `eval` turns the
+   * stored bit into the outputs. The `clk` pin is named so a structural copy can be driven.
+   */
+  clocked?: { d: string; clk: string };
 }
 
 /**
@@ -92,4 +99,9 @@ export interface ComponentDef {
   simulateAs?: 'behavior';
   /** Pins that together form numbers, keyed by the bus name shown to students (e.g. `A`). */
   buses?: Record<string, BusDef>;
+  /**
+   * Power-on values of nets inside this component, keyed by their driver (e.g. `{ 'n3.y': 0 }`).
+   * Cross-coupled latches need them: with every net at 0 they would oscillate (DESIGN.md §11).
+   */
+  powerOn?: Record<PinRef, Bit>;
 }

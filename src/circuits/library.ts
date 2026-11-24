@@ -3,12 +3,14 @@ import { Library } from '../sim/library';
 import { defineAdders } from './adders';
 import { defineGates } from './gates';
 import { definePrimitives } from './primitives';
+import { defineRegisters } from './registers';
 
 export function createLibrary(): Library {
   const lib = new Library();
   definePrimitives(lib);
   defineGates(lib);
   defineAdders(lib);
+  defineRegisters(lib);
   return lib;
 }
 

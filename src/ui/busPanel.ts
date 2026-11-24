@@ -3,6 +3,7 @@
 import { busPanelText as T, type BenchText } from '../content/bench';
 import { binaryString, numberToBits } from '../sim/bus';
 import { inputPins, outputPins } from '../sim/library';
+import { CLOCK_PIN } from '../sim/simulator';
 import type { Bit } from '../sim/types';
 import type { Bench } from '../render/bench';
 import { clampSigned, formatBit, formatNumber, parseNumber } from './format';
@@ -62,7 +63,8 @@ export class BusPanel {
         bin.textContent = binaryString(bits);
       });
     }
-    for (const pin of inputPins(def).filter((p) => !inBus.has(p))) {
+    // Single-bit inputs get toggles; the clock is driven by the clock bar instead.
+    for (const pin of inputPins(def).filter((p) => !inBus.has(p) && p !== CLOCK_PIN)) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.addEventListener('click', () => bench.toggle(pin));

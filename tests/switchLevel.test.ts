@@ -13,7 +13,7 @@ describe('switch level', () => {
       const ins = inputPins(def);
       for (const row of allInputs(ins.length)) {
         const r = evaluateSwitches(net, Object.fromEntries(ins.map((p, i) => [p, row[i]])));
-        expect(r.out).toBe(def.behavior!.eval(row)[0]);
+        expect(r.out).toBe(def.behavior!.eval(row, 0)[0]);
         // Complementary CMOS: never a short, never floating, and a path always exists.
         expect(Object.values(r.level)).not.toContain('short');
         expect(r.path.length).toBeGreaterThan(0);

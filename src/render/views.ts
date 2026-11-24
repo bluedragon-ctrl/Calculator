@@ -5,12 +5,17 @@
 // LOD: contents are created lazily when an instance first opens, crossfade with the box,
 // stay cached while nearby, and are disposed once the instance is collapsed and small or far
 // away. Instances outside the visible area are culled (hidden and not updated).
+//
+// Behavioural instances (a D flip-flop in a register, DESIGN.md §5.2) have no gates in the main
+// simulation. When one opens, its contents are a local structural copy with its own simulator
+// and playback, driven by the values that arrive at the instance's pins.
 import { Group, Mesh, PlaneGeometry, type Object3D } from 'three';
 import type { Line2 } from 'three/addons/lines/Line2.js';
 import { cmosLayout, type CapLayout, type CmosWire, type FetLayout } from '../circuits/cmosLayout';
 import { innerScale, innerSize, minPinGap, netGeometry, pinPos } from '../circuits/geometry';
 import { pinKey, type Circuit } from '../sim/flatten';
 import { inputPins, outputPins, type Library } from '../sim/library';
+import { LocalSim } from '../sim/local';
 import { cmosNetlist, evaluateSwitches, GND, OUT, VDD, type CmosNetlist } from '../sim/switchLevel';
 import type { Bit, ComponentDef, Point } from '../sim/types';
 import type { AlphaFn } from './fade';
@@ -19,7 +24,7 @@ import {
   DISPOSE_PX, ease, intersects, screenSize, shouldDispose, stepAlpha, wantExpanded, type Bounds, type Rect,
 } from './lod';
 import { LABEL_DIM, VDD_COLOR, GND_COLOR } from './palette';
-import { chargeLevel, type Playback } from './playback';
+import { chargeLevel, Playback } from './playback';
 import { gateSymbol, symbolName } from './symbols';
 import { makeLine, Wire, type WireMaterials } from './wires';
 
@@ -33,8 +38,12 @@ const HIDDEN = 0.004;
 export class NetWires {
   private readonly byNet = new Map<number, Set<Wire>>();
   private lastActive = new Set<number>();
+  /** Nets whose displayed value changed since the last update (instant changes never show as "changing"). */
+  private readonly settled = new Set<number>();
 
-  constructor(private readonly playback: Playback) {}
+  constructor(private readonly playback: Playback) {
+    playback.listen((net) => this.settled.add(net));
+  }
 
   add(net: number, wire: Wire): void {
     let set = this.byNet.get(net);
@@ -62,9 +71,10 @@ export class NetWires {
 
   update(): void {
     const now = new Set(this.playback.changing());
-    for (const net of new Set([...now, ...this.lastActive])) {
+    for (const net of new Set([...now, ...this.lastActive, ...this.settled])) {
       for (const w of this.byNet.get(net) ?? []) this.sync(net, w);
     }
+    this.settled.clear();
     this.lastActive = now;
   }
 
@@ -103,6 +113,13 @@ export type Hit =
   | { kind: 'fet'; view: ComponentView; fet: FetLayout; on: boolean; gate: Bit }
   | { kind: 'cap'; view: ComponentView; charge: number };
 
+/** The local structural copy behind an opened behavioural instance. */
+interface LocalCopy {
+  sim: LocalSim;
+  ctx: ViewContext;
+  stopListening: () => void;
+}
+
 interface WireHit {
   net: number;
   name: string;
@@ -138,6 +155,7 @@ export class ComponentView {
   private contents: Group | null = null;
   private children: ComponentView[] = [];
   private cmos: CmosView | null = null;
+  private local: LocalCopy | null = null;
   /** Wants to show its contents (with hysteresis). */
   private target = false;
   /** Crossfade position: 0 = box, 1 = contents. */
@@ -200,6 +218,29 @@ export class ComponentView {
     return !!this.cmos && this.isExpanded;
   }
 
+  /** Simulated as one behavioural node, so its inside is a local structural copy (§5.2). */
+  get isBehavioural(): boolean {
+    return !!this.def.parts && this.ctx.circuit.gateByPath.has(this.path);
+  }
+
+  /** Displayed value of a net drawn inside this instance (the local copy's nets, if any). */
+  wireValue(net: number): Bit {
+    return this.innerCtx.playback.value(net);
+  }
+
+  /** Context for the contents: the local copy's, or the same as the box's. */
+  private get innerCtx(): ViewContext {
+    return this.local?.ctx ?? this.ctx;
+  }
+
+  /** Net of a pin reference inside the contents (`'x1.a'` or an own pin). */
+  private innerNet(ref: string): number {
+    const key = this.local ? ref : pinKey(this.path, ref);
+    const n = this.innerCtx.circuit.pinNet.get(key);
+    if (n === undefined) throw new Error(`No net for ${key}`);
+    return n;
+  }
+
   contains(x: number, y: number, tol = 0): boolean {
     const [l, b, r, t] = this.worldBounds;
     return x >= l - tol && x <= r + tol && y >= b - tol && y <= t + tol;
@@ -223,6 +264,12 @@ export class ComponentView {
   }
 
   update(view: ViewRect, dtSec: number, parentAlpha = 1): void {
+    if (this.local) {
+      const pb = this.local.ctx.playback;
+      pb.msPerDelta = this.ctx.playback.msPerDelta;
+      pb.update(dtSec * 1000);
+      this.local.ctx.nets.update();
+    }
     const b = this.worldBounds;
     const px = screenSize(b, view.pxPerWorld);
     if (!intersects(b, view)) {
@@ -330,10 +377,10 @@ export class ComponentView {
     return [this.worldX + x * this.innerWorld, this.worldTop - y * this.innerWorld];
   }
 
-  private addWire(parent: Group, net: number, pts: Point[], worldScale: number, fade: AlphaFn): Wire {
-    const w = new Wire(flip(pts), this.ctx.mats, worldScale, fade);
+  private addWire(parent: Group, net: number, pts: Point[], worldScale: number, fade: AlphaFn, ctx = this.ctx): Wire {
+    const w = new Wire(flip(pts), ctx.mats, worldScale, fade);
     parent.add(w.object);
-    this.ctx.nets.add(net, w);
+    ctx.nets.add(net, w);
     return w;
   }
 
@@ -354,6 +401,12 @@ export class ComponentView {
       return;
     }
     this.box.add(makeLine(flip([[0, 0], [w, 0], [w, h], [0, h], [0, 0]]), mats.outline, 0, fade));
+    const clk = this.def.pins.clk;
+    if (clk?.side === 'left') {
+      // The usual clock-input mark: a small triangle on the box edge.
+      const k = Math.min(w, h) * 0.12;
+      this.box.add(makeLine(flip([[0, clk.at - k], [k * 1.2, clk.at], [0, clk.at + k]]), mats.outline, 0, fade));
+    }
     const size = Math.min(h * 0.2, (w * 1.4) / Math.max(8, this.def.title.length));
     const hasBuses = !!this.def.buses;
     const title = new Label(this.def.title, w / 2, -h * (hasBuses ? 0.3 : 0.5) + (this.partLabel ? size * 0.6 : 0), { size });
@@ -410,8 +463,35 @@ export class ComponentView {
     }
   }
 
-  private buildContents(): void {
+  /** A structural copy driven by the displayed values at this instance's input pins. */
+  private createLocal(): LocalCopy {
     const { ctx, def } = this;
+    const shown = (p: string) => ctx.playback.value(this.netOfPin(p));
+    const ins = inputPins(def);
+    // The stored bit is what the behavioural node shows at its (first) output.
+    const sim = new LocalSim(def, ctx.lib, Object.fromEntries(ins.map((p) => [p, shown(p)])), shown(outputPins(def)[0]));
+    const playback = new Playback(Array.from({ length: sim.circuit.netCount }, (_, i) => sim.sim.get(i)));
+    playback.msPerDelta = ctx.playback.msPerDelta;
+    const local: LocalCopy = {
+      sim,
+      ctx: { ...ctx, circuit: sim.circuit, playback, nets: new NetWires(playback) },
+      stopListening: () => {},
+    };
+    const pinOfNet = new Map(ins.map((p) => [this.netOfPin(p), p]));
+    local.stopListening = ctx.playback.listen((net, v) => {
+      const pin = pinOfNet.get(net);
+      if (pin === undefined) return;
+      playback.msPerDelta = ctx.playback.msPerDelta;
+      playback.push(sim.drive({ [pin]: v }));
+    });
+    return local;
+  }
+
+  private buildContents(): void {
+    const { def } = this;
+    if (this.isBehavioural) this.local = this.createLocal();
+    const ctx = this.innerCtx;
+    const innerPath = this.local ? '' : this.path;
     const s = innerScale(def);
     const g = new Group();
     g.scale.setScalar(1 / s);
@@ -421,7 +501,7 @@ export class ComponentView {
     this.group.add(g);
 
     if (def.cmos) {
-      this.cmos = new CmosView(ctx, def, innerWorld, (pin) => this.netOfPin(pin), fade);
+      this.cmos = new CmosView(ctx, def, innerWorld, (pin) => this.innerNet(pin), fade);
       g.add(this.cmos.group);
       this.wireHits = this.cmos.signalWires.map(({ node, points, net }) => ({
         net, name: node === OUT ? 'output' : `input ${node.slice(3)}`, pts: points.map((p) => this.toWorld(p)),
@@ -430,10 +510,10 @@ export class ComponentView {
     }
     for (const net of def.nets ?? []) {
       const geom = netGeometry(def, net, ctx.lib);
-      const id = this.netOfPin(net.from);
+      const id = this.innerNet(net.from);
       const name = net.name ?? net.from;
       for (const br of geom.branches) {
-        this.contentWires.push([id, this.addWire(g, id, br, innerWorld, fade)]);
+        this.contentWires.push([id, this.addWire(g, id, br, innerWorld, fade, ctx)]);
         this.wireHits.push({ net: id, name, pts: br.map((p) => this.toWorld(p)) });
       }
       for (const [x, y] of geom.junctions) {
@@ -447,7 +527,7 @@ export class ComponentView {
     for (const [name, part] of Object.entries(def.parts ?? {})) {
       const cdef = ctx.lib.get(part.type);
       const child = new ComponentView(
-        ctx, cdef, pinKey(this.path, name),
+        ctx, cdef, pinKey(innerPath, name),
         this.worldX + part.at[0] * innerWorld,
         this.worldTop - part.at[1] * innerWorld,
         innerWorld,
@@ -463,9 +543,11 @@ export class ComponentView {
     if (!this.contents) return;
     for (const c of this.children) c.dispose();
     for (const [net, w] of this.contentWires) {
-      this.ctx.nets.remove(net, w);
+      this.innerCtx.nets.remove(net, w);
       w.dispose();
     }
+    this.local?.stopListening();
+    this.local = null;
     this.cmos?.dispose();
     disposeLines(this.contents);
     this.group.remove(this.contents);

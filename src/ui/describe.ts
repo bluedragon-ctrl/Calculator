@@ -2,6 +2,7 @@
 import { tooltipText as T, wireBlurb } from '../content/tooltips';
 import { busValue } from '../sim/bus';
 import { inputPins, outputPins } from '../sim/library';
+import { CLOCK_PIN } from '../sim/simulator';
 import type { Bench, BenchHit } from '../render/bench';
 import type { ComponentView } from '../render/views';
 import { formatBit, formatBus } from './format';
@@ -33,6 +34,7 @@ function pinLines(view: ComponentView): string[] {
 
 /** If a wire carries a bit of one of the instance's buses, say which. */
 function busOfNet(view: ComponentView, net: number): string | null {
+  if (view.isBehavioural) return null; // its wires belong to the local copy (other net ids)
   for (const [name, bus] of Object.entries(view.def.buses ?? {})) {
     const i = bus.pins.findIndex((p) => view.netOfPin(p) === net);
     if (i >= 0) {
@@ -49,13 +51,13 @@ export function describe(hit: BenchHit, bench: Bench): TooltipContent {
       const v = hit.view;
       return {
         title: v.displayName,
-        body: v.def.blurb,
+        body: v.isBehavioural ? `${v.def.blurb} ${T.behaviour}` : v.def.blurb,
         values: pinLines(v),
         hint: v.canExpand && !v.isExpanded ? T.zoomHint : undefined,
       };
     }
     case 'wire': {
-      const value = bench.playback.value(hit.net);
+      const value = hit.view.wireValue(hit.net);
       const bus = busOfNet(hit.view, hit.net);
       return {
         title: `Wire ${hit.name}`,
@@ -84,6 +86,9 @@ export function describe(hit: BenchHit, bench: Bench): TooltipContent {
       if (bus) {
         const { value, bits } = bench.bus(bus[0]);
         values.push(`Bit ${bus[1].pins.indexOf(hit.pin)} of ${formatBus(bus[0], value, bits)}`);
+      }
+      if (hit.kind === 'switch' && hit.pin === CLOCK_PIN) {
+        return { title: T.clockTitle, body: T.clock, values, hint: T.clockHint };
       }
       return {
         title: `${hit.kind === 'switch' ? 'Input' : 'Output'} ${hit.pin.toUpperCase()}`,
