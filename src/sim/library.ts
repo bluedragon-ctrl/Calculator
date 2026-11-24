@@ -81,6 +81,12 @@ function validate(def: ComponentDef, lib: Library): void {
   if (!def.behavior && !hasStructure) fail('needs a behavior or a structure');
   if (def.simulateAs === 'behavior' && !def.behavior) fail('simulateAs "behavior" needs a behavior');
   if (def.behavior && !(def.behavior.delay >= 0)) fail('behavior delay must be ≥ 0');
+  const clocked = def.behavior?.clocked;
+  if (clocked) {
+    for (const p of [clocked.d, clocked.clk]) {
+      if (def.pins[p]?.dir !== 'in') fail(`clocked behavior needs an input pin "${p}"`);
+    }
+  }
 
   if (def.cmos) {
     const outs = outputPins(def);
@@ -102,6 +108,7 @@ function validate(def: ComponentDef, lib: Library): void {
   }
 
   if (hasStructure) validateStructure(def, lib, fail);
+  else if (def.powerOn) fail('powerOn needs a structure');
 }
 
 function validateStructure(def: ComponentDef, lib: Library, fail: (m: string) => never): void {
@@ -146,6 +153,11 @@ function validateStructure(def: ComponentDef, lib: Library, fail: (m: string) =>
     for (const r of Object.keys(net.routes ?? {})) {
       if (!net.to.includes(r)) fail(`route for "${r}" which is not a sink of net "${net.from}"`);
     }
+  }
+
+  for (const [ref, v] of Object.entries(def.powerOn ?? {})) {
+    if (v !== 0 && v !== 1) fail(`powerOn value of "${ref}" must be 0 or 1`);
+    if (!nets.some((n) => n.from === ref)) fail(`powerOn "${ref}" is not the driver of a net`);
   }
 
   for (const p of Object.keys(def.pins)) if (!used.has(p)) fail(`pin "${p}" is not connected`);

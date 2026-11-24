@@ -21,7 +21,7 @@ export interface Preset {
 
 export const benchIntro = {
   heading: 'Lab bench',
-  help: 'Click a switch (or press A, B) to flip an input. Scroll to zoom, drag to move. Double-click a part to fly to it, Backspace zooms out, Home goes back.',
+  help: 'Click a switch (or press A, B) to flip an input. Space makes one clock tick. Scroll to zoom, drag to move. Double-click a part to fly to it, Backspace zooms out, Home goes back.',
 };
 
 export const busPanelText = {
@@ -125,6 +125,55 @@ export const benches: BenchText[] = [
       { label: '3 − 5', values: { A: 3, B: 5, sub: 1 }, hint: 'Subtract: B is flipped and 1 is added.' },
       { label: '−1 + 1', values: { A: -1, B: 1, sub: 0 }, hint: 'The longest carry ripple: through all 8 bits.' },
       { label: '127 + 1', values: { A: 127, B: 1, sub: 0 }, hint: 'Too big for 8 bits: overflow.' },
+    ],
+  },
+  {
+    component: 'SRLatch',
+    label: 'SR latch',
+    title: 'SR latch: a loop that remembers',
+    steps: [
+      'An SR latch remembers one bit. Set S to 1, then back to 0. Q stays 1: the latch remembers!',
+      'R (reset) makes Q = 0 again. While S and R are both 0, Q keeps whatever it had.',
+      'Zoom in: two NOR gates, each feeding its output into the other. This loop is what holds the bit.',
+      'S and R both 1 is not allowed: Q and QN both become 0, and the latch forgets what it stored.',
+    ],
+  },
+  {
+    component: 'DLatch',
+    label: 'D latch',
+    title: 'D latch: a door for one bit',
+    steps: [
+      'A D latch has a data input D and an enable E. While E is 1, the door is open: Q copies D.',
+      'Turn E to 0 and flip D. Q does not change: the door is shut and the latch holds the last value.',
+      'Zoom in: four NAND gates. The two on the right form a loop that holds the bit, like the SR latch.',
+      'The catch: while E is 1, every wobble of D goes straight through. Computers want changes only at exact moments. The flip-flop does that.',
+    ],
+  },
+  {
+    component: 'DFF',
+    label: 'Flip-flop',
+    title: 'D flip-flop: one bit, one tick',
+    steps: [
+      'A flip-flop stores D only at one moment: when the clock rises from 0 to 1. That is one tick.',
+      'Flip D: Q does not change. Now press Step (or click the clock, or press Space). Q takes the value of D.',
+      'Zoom in: two D latches. The master is open while the clock is 0, the slave while it is 1. Never both at once.',
+      'Watch a tick in slow motion: D waits in the master. When the clock rises, the master shuts and the slave passes its bit to Q.',
+    ],
+  },
+  {
+    component: 'Register8',
+    label: 'Register',
+    title: '8-bit register: a stored number',
+    steps: [
+      'A register stores a whole number: eight flip-flops sharing one clock. The calculator keeps X, Y and M in registers like this.',
+      'Type a number into D. Q does not change. Press Step: still nothing, because LOAD is 0.',
+      'Turn LOAD on and press Step. All eight bits load at the same tick, and Q shows the number.',
+      'Zoom into one bit. A multiplexer picks what the flip-flop stores next: D when LOAD is 1, its own Q when LOAD is 0.',
+      'To save work, the calculator simulates each flip-flop as one block. Zoom into one and its real gates are replayed from its pins.',
+    ],
+    presets: [
+      { label: 'D = 42, load on', values: { D: 42, load: 1 }, hint: 'Then press Step to store 42.' },
+      { label: 'D = −7, load off', values: { D: -7, load: 0 }, hint: 'Press Step: Q keeps its value, because LOAD is 0.' },
     ],
   },
 ];

@@ -1,6 +1,6 @@
 // Flatten a component hierarchy into primitive gates and nets (DESIGN.md §5.2).
 import { inputPins, isLeaf, outputPins, splitRef, type Library } from './library';
-import type { Behavior, ComponentDef } from './types';
+import type { Behavior, Bit, ComponentDef } from './types';
 
 export interface Gate {
   id: number;
@@ -35,6 +35,18 @@ export interface Circuit {
   instances: Map<string, Instance>;
   /** Net id of any pin in the hierarchy, keyed by `pinKey(path, pin)`. */
   pinNet: Map<string, number>;
+  /** Leaf gate id by instance path (e.g. a behavioural DFF at `"b3.dff"`). */
+  gateByPath: Map<string, number>;
+  /** Power-on values (net, value), inner components first so outer ones can override. */
+  powerOn: [number, Bit][];
+}
+
+export interface FlattenOptions {
+  /**
+   * Expand every component that has a structure, ignoring `simulateAs: 'behavior'`. Used for
+   * the lab bench of a flip-flop and for the structural copy of a behavioural instance.
+   */
+  structural?: boolean;
 }
 
 export function pinKey(path: string, pin: string): string {
@@ -68,17 +80,19 @@ interface RawGate {
   outputs: number[];
 }
 
-export function flatten(top: ComponentDef, lib: Library): Circuit {
+export function flatten(top: ComponentDef, lib: Library, opts: FlattenOptions = {}): Circuit {
   const uf = new UnionFind();
   const rawGates: RawGate[] = [];
   const instances = new Map<string, Instance>();
   const rawPins = new Map<string, number>();
   const names: [number, string][] = [];
+  const rawPowerOn: [number, Bit][] = [];
+  const leaf = (def: ComponentDef) => (opts.structural ? !def.parts : isLeaf(def));
 
   const visit = (def: ComponentDef, path: string, pins: Record<string, number>) => {
     instances.set(path, { path, def });
     for (const [p, id] of Object.entries(pins)) rawPins.set(pinKey(path, p), id);
-    if (isLeaf(def)) {
+    if (leaf(def)) {
       rawGates.push({
         path,
         def,
@@ -105,6 +119,7 @@ export function flatten(top: ComponentDef, lib: Library): Circuit {
     for (const [name, part] of Object.entries(def.parts ?? {})) {
       visit(lib.get(part.type), pinKey(path, name), childPins[name]);
     }
+    for (const [ref, v] of Object.entries(def.powerOn ?? {})) rawPowerOn.push([idOf(ref), v]);
   };
 
   const topPins: Record<string, number> = {};
@@ -160,5 +175,8 @@ export function flatten(top: ComponentDef, lib: Library): Circuit {
   const fanout: number[][] = Array.from({ length: netCount }, () => []);
   for (const g of gates) for (const i of new Set(g.inputs)) fanout[i].push(g.id);
 
-  return { top, netCount, netNames, gates, fanout, driver, inputs, outputs, instances, pinNet };
+  const gateByPath = new Map(gates.map((g) => [g.path, g.id]));
+  const powerOn = rawPowerOn.map(([raw, v]) => [netOf(raw), v] as [number, Bit]);
+
+  return { top, netCount, netNames, gates, fanout, driver, inputs, outputs, instances, pinNet, gateByPath, powerOn };
 }

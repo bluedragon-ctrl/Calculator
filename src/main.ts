@@ -18,6 +18,8 @@ import {
   type Quality, type QualitySetting,
 } from './ui/quality';
 import { msLabel, sliderToMs } from './ui/slowmo';
+import { ClockRunner } from './ui/clock';
+import { ClockBar } from './ui/clockBar';
 
 function safeLocalStorage(): Storage | undefined {
   try {
@@ -65,15 +67,28 @@ function start(): void {
   applyMotion();
   reducedMotion.addEventListener('change', applyMotion);
 
-  // --- Slow motion ---
+  // --- Slow motion and clock (DESIGN.md §6.5) ---
   const slider = $<HTMLInputElement>('slowmo');
   const sliderValue = $('slowmo-value');
+  const clock = new ClockRunner();
   let msPerDelta = sliderToMs(Number(slider.value));
   const applySlowmo = () => {
-    msPerDelta = sliderToMs(Number(slider.value));
+    // Instant mode skips the animation whatever the slider says.
+    const instant = clock.mode === 'instant';
+    msPerDelta = instant ? 0 : sliderToMs(Number(slider.value));
+    slider.disabled = instant;
     sliderValue.textContent = msLabel(msPerDelta);
     bench?.setSlowMotion(msPerDelta);
   };
+  const step = () => bench?.tick();
+  const clockBar = new ClockBar($('clock'), {
+    onStep: step,
+    onMode: (m) => {
+      clock.setMode(m);
+      applySlowmo();
+    },
+    onRate: (r) => (clock.ticksPerSec = r),
+  });
 
   // --- Bench ---
   const buttons = $('bench-buttons');
@@ -86,6 +101,7 @@ function start(): void {
     }
     tooltip.hide();
     bench = new Bench(library.get(b.component), library, mats);
+    bench.onClockRise(() => clockBar.flash());
     bench.setSlowMotion(msPerDelta);
     bench.setFade(reducedMotion.matches ? 0 : FADE_SEC);
     busPanel = new BusPanel($('bus-panel'), bench, b);
@@ -185,6 +201,13 @@ function start(): void {
       zoomOut();
       return;
     }
+    if (e.key === ' ') {
+      // Space = Step everywhere outside text fields, even when a button has focus (students
+      // click a preset, then press Space). Enter still presses a focused button.
+      e.preventDefault();
+      step();
+      return;
+    }
     const pin = e.key.toLowerCase();
     if (bench && pin.length === 1 && bench.inputs.includes(pin)) bench.toggle(pin);
   });
@@ -234,6 +257,10 @@ function start(): void {
       }
     }
     nav.update(dtMs / 1000);
+    if (bench && clock.update(dtMs, bench.playback.busy)) bench.tick();
+    clockBar.update({
+      enabled: !!bench?.hasClock, mode: clock.mode, ticks: bench?.ticks ?? 0, high: bench?.clockValue === 1,
+    });
     mats.worldPerPx = 1 / stage.pxPerWorld;
     bench?.update(dtMs, { ...stage.visibleRect, pxPerWorld: stage.pxPerWorld });
     busPanel?.update();
@@ -260,7 +287,7 @@ function start(): void {
   if (import.meta.env.DEV) {
     // Dev-only handle for visual checks (Playwright); removed from production builds.
     (window as unknown as Record<string, unknown>).__calc = {
-      stage, nav, get bench() { return bench; }, showBench: (name: string) => showBench(benches.find((b) => b.component === name)!),
+      stage, nav, clock, get bench() { return bench; }, showBench: (name: string) => showBench(benches.find((b) => b.component === name)!),
     };
   }
 }

@@ -72,7 +72,38 @@ export const XOR2: ComponentDef = {
   ],
 };
 
-export const GATES: ComponentDef[] = [AND2, OR2, XOR2];
+// Inner frame 16 × 11 (innerScale 4). y = s ? b : a. The select pin enters between a and b,
+// so the inverted select reaches the top NAND and s itself the bottom one without crossings.
+export const MUX2: ComponentDef = {
+  name: 'MUX2',
+  title: 'Multiplexer',
+  blurb: 'A switch for signals: it passes on input a when s is 0, and input b when s is 1.',
+  size: [4, 2.75],
+  innerScale: 4,
+  pins: {
+    a: { dir: 'in', side: 'left', at: 0.375 },
+    s: { dir: 'in', side: 'left', at: 1.375 },
+    b: { dir: 'in', side: 'left', at: 2.375 },
+    y: { dir: 'out', side: 'right', at: 1.375 },
+  },
+  parts: {
+    inv: { type: 'NOT', at: [3, 4.5] },
+    n1: { type: 'NAND2', at: [7, 1] },
+    n2: { type: 'NAND2', at: [7, 8] },
+    n3: { type: 'NAND2', at: [12, 4.5] },
+  },
+  nets: [
+    { from: 'a', to: ['n1.a'] },
+    { from: 's', to: ['inv.a', 'n2.a'], routes: { 'n2.a': [[1.5, 5.5], [1.5, 8.5]] } },
+    { from: 'b', to: ['n2.b'] },
+    { from: 'inv.y', to: ['n1.b'], name: 'not s' },
+    { from: 'n1.y', to: ['n3.a'], name: 'n1' },
+    { from: 'n2.y', to: ['n3.b'], name: 'n2', routes: { 'n3.b': [[11, 9], [11, 6]] } },
+    { from: 'n3.y', to: ['y'] },
+  ],
+};
+
+export const GATES: ComponentDef[] = [AND2, OR2, XOR2, MUX2];
 
 export function defineGates(lib: Library): void {
   for (const d of GATES) defineComponent(lib, d);

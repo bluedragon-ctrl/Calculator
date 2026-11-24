@@ -22,12 +22,14 @@ const expected: Record<string, (v: Bit[]) => Bit> = {
   AND2: (v) => b(and(v)),
   OR2: (v) => b(or(v)),
   XOR2: ([x, y]) => b(x !== y),
+  MUX2: ([a, s, bb]) => (s ? bb : a),
 };
 
 describe('truth tables', () => {
-  it('covers every gate in the library (adders are tested in adders.test.ts)', () => {
+  it('covers every gate in the library (adders and memory have their own test files)', () => {
     const adders = ['HalfAdder', 'FullAdder', 'Adder8', 'AddSub8'];
-    expect([...Object.keys(expected), ...adders].sort()).toEqual(library.names().sort());
+    const memory = ['SRLatch', 'DLatch', 'DFF', 'RegBit', 'Register8'];
+    expect([...Object.keys(expected), ...adders, ...memory].sort()).toEqual(library.names().sort());
   });
 
   for (const [name, fn] of Object.entries(expected)) {
@@ -53,5 +55,6 @@ describe('structure', () => {
     expect(types('AND2')).toEqual(['NAND2', 'NOT']);
     expect(types('OR2')).toEqual(['NOR2', 'NOT']);
     expect(types('XOR2')).toEqual(['NAND2', 'NAND2', 'NAND2', 'NAND2']);
+    expect(types('MUX2')).toEqual(['NAND2', 'NAND2', 'NAND2', 'NOT']);
   });
 });

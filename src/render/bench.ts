@@ -1,11 +1,12 @@
 // Lab bench (DESIGN.md §7.2): one component with clickable input switches and output lamps.
 // Inputs on the left or top get switches; outputs on the right or bottom get lamps.
+// A `clk` input gets a clock source instead of a switch: clicking it is one tick (§5.3).
 import { CircleGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry } from 'three';
 import { minPinGap, pinPos } from '../circuits/geometry';
 import { busValue } from '../sim/bus';
 import { flatten, type Circuit } from '../sim/flatten';
 import { inputPins, outputPins, type Library } from '../sim/library';
-import { Simulator } from '../sim/simulator';
+import { CLOCK_PIN, Simulator } from '../sim/simulator';
 import type { Bit, ComponentDef, Point } from '../sim/types';
 import { Label } from './labels';
 import { fitView, FADE_SEC, type Bounds } from './lod';
@@ -14,6 +15,7 @@ import { Playback } from './playback';
 import type { View } from './stage';
 import { ComponentView, distToPolyline, NetWires, type Hit, type ViewContext, type ViewRect } from './views';
 import { makeLine, Wire, type WireMaterials } from './wires';
+import type { Line2 } from 'three/addons/lines/Line2.js';
 
 /** Preferred world size of the component box on the bench… */
 const BOX_W = 6;
@@ -30,7 +32,9 @@ interface Switch {
   y: number;
   w: number;
   h: number;
-  knob: Mesh;
+  /** A switch has a sliding knob; the clock source a square-wave mark instead. */
+  knob: Mesh | null;
+  wave: Line2 | null;
   label: Label;
 }
 
@@ -68,9 +72,13 @@ export class Bench {
   private readonly square = new PlaneGeometry(1, 1);
   private readonly disc = new CircleGeometry(1, 32);
   private readonly bounds: [number, number, number, number];
+  /** Clock ticks since this bench was opened. */
+  ticks = 0;
 
   constructor(readonly def: ComponentDef, lib: Library, private readonly mats: WireMaterials) {
-    this.circuit = flatten(def, lib);
+    // A bench shows how its component is built, so a flip-flop (behavioural in the full
+    // machine) is simulated gate by gate here.
+    this.circuit = flatten(def, lib, { structural: def.simulateAs === 'behavior' });
     this.sim = new Simulator(this.circuit);
     this.playback = new Playback(Array.from({ length: this.circuit.netCount }, (_, i) => this.sim.get(i)));
     this.nets = new NetWires(this.playback);
@@ -112,15 +120,27 @@ export class Bench {
       const net = this.circuit.inputs[pin];
       this.addWire(pin, net, fromTop ? [[sx, sy - swH / 2], [px, py]] : [[sx + swW / 2, py], [px, py]]);
       this.object.add(makeLine(rect(sx, sy, swW, swH), mats.outline));
-      const knob = new Mesh(this.square, this.knobOff);
-      knob.scale.set(swH * 0.8, swH * 0.8, 1);
-      knob.position.set(sx, sy, 0.05);
+      let knob: Mesh | null = null;
+      let wave: Line2 | null = null;
+      if (pin === CLOCK_PIN) {
+        // Square wave: low, rise, high, fall, low.
+        const [x0, x1, y0, y1] = [sx - swW * 0.36, sx + swW * 0.36, sy - swH * 0.25, sy + swH * 0.25];
+        const xa = x0 + (x1 - x0) * 0.3;
+        const xb = x0 + (x1 - x0) * 0.7;
+        wave = makeLine([[x0, y0], [xa, y0], [xa, y1], [xb, y1], [xb, y0], [x1, y0]], mats.outline, 0.05);
+        this.object.add(wave);
+      } else {
+        knob = new Mesh(this.square, this.knobOff);
+        knob.scale.set(swH * 0.8, swH * 0.8, 1);
+        knob.position.set(sx, sy, 0.05);
+        this.object.add(knob);
+      }
       const label = fromTop
         ? new Label('', sx, sy + swH / 2 + 0.25, { size: textSize, anchorY: 'bottom', color: LABEL })
         : new Label('', sx - swW / 2 - 0.3, sy, { size: textSize, anchorX: 'right', color: LABEL });
-      this.object.add(knob, label.text);
+      this.object.add(label.text);
       this.labels.push(label);
-      this.switches.push({ pin, x: sx, y: sy, w: swW, h: swH, knob, label });
+      this.switches.push({ pin, x: sx, y: sy, w: swW, h: swH, knob, wave, label });
       if (fromTop) grow(sx - swW, sy, sx + swW, sy + swH / 2 + 0.3 + textSize * 1.5);
       else grow(sx - swW / 2 - 0.3 - textSize * 4, sy, sx, sy);
     }
@@ -179,8 +199,42 @@ export class Bench {
     return this.switches.map((s) => s.pin);
   }
 
+  /** True when the component has a clock input (the clock bar can step it). */
+  get hasClock(): boolean {
+    return this.circuit.inputs[CLOCK_PIN] !== undefined;
+  }
+
+  /** Displayed value of the clock wire (it pulses 0 → 1 → 0 on every tick). */
+  get clockValue(): Bit {
+    const net = this.circuit.inputs[CLOCK_PIN];
+    return net === undefined ? 0 : this.playback.value(net);
+  }
+
+  /** Call `fn` whenever the displayed clock rises (also when playing instantly). */
+  onClockRise(fn: () => void): () => void {
+    const net = this.circuit.inputs[CLOCK_PIN];
+    return this.playback.listen((n, v) => {
+      if (n === net && v === 1) fn();
+    });
+  }
+
+  /** One clock tick: the clock input pulses and the flip-flops load (DESIGN.md §5.3). */
+  tick(): void {
+    if (!this.hasClock) return;
+    this.ticks++;
+    this.playback.push(this.sim.tick());
+    this.refreshControls();
+  }
+
+  /** Flip an input switch. The clock source does not toggle: clicking it is one tick. */
   toggle(pin: string): void {
-    this.setInputs({ [pin]: this.sim.input(pin) ? 0 : 1 });
+    if (pin === CLOCK_PIN) this.tick();
+    else this.setInputs({ [pin]: this.sim.input(pin) ? 0 : 1 });
+  }
+
+  /** Value shown on an input control (for the clock: the displayed pulse). */
+  inputValue(pin: string): Bit {
+    return pin === CLOCK_PIN ? this.clockValue : this.sim.input(pin);
   }
 
   /** Change several inputs at once: one settle, one timeline (e.g. a whole 8-bit number). */
@@ -218,7 +272,7 @@ export class Bench {
   /** What is under a world point: a bench switch or lamp, a wire to them, or part of the component. */
   hit(x: number, y: number, tol: number): BenchHit | null {
     const sw = this.switchAt(x, y);
-    if (sw) return { kind: 'switch', pin: sw, value: this.sim.input(sw) };
+    if (sw) return { kind: 'switch', pin: sw, value: this.inputValue(sw) };
     for (const l of this.lamps) {
       if (Math.hypot(x - l.x, y - l.y) <= l.r * 1.2 + tol) return { kind: 'lamp', pin: l.pin, value: this.outputValue(l.pin) };
     }
@@ -228,7 +282,7 @@ export class Bench {
       if (distToPolyline([x, y], w.pts) <= tol) {
         const isIn = this.def.pins[w.pin].dir === 'in';
         return isIn
-          ? { kind: 'switch', pin: w.pin, value: this.sim.input(w.pin) }
+          ? { kind: 'switch', pin: w.pin, value: this.inputValue(w.pin) }
           : { kind: 'lamp', pin: w.pin, value: this.outputValue(w.pin) };
       }
     }
@@ -237,9 +291,12 @@ export class Bench {
 
   private refreshControls(): void {
     for (const s of this.switches) {
-      const v = this.sim.input(s.pin);
-      s.knob.material = v ? this.knobOn : this.knobOff;
-      s.knob.position.x = s.x + (v ? 1 : -1) * (s.w / 2 - s.h / 2);
+      const v = this.inputValue(s.pin);
+      if (s.knob) {
+        s.knob.material = v ? this.knobOn : this.knobOff;
+        s.knob.position.x = s.x + (v ? 1 : -1) * (s.w / 2 - s.h / 2);
+      }
+      if (s.wave) s.wave.material = v ? this.mats.on : this.mats.outline;
       s.label.content = `${s.pin.toUpperCase()} = ${v}`;
     }
     for (const l of this.lamps) {
@@ -260,6 +317,7 @@ export class Bench {
   dispose(): void {
     this.view.dispose();
     for (const w of this.wires) w.dispose();
+    for (const s of this.switches) s.wave?.geometry.dispose();
     for (const l of this.labels) l.dispose();
     this.square.dispose();
     this.disc.dispose();
