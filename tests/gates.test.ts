@@ -29,7 +29,12 @@ describe('truth tables', () => {
   it('covers every gate in the library (adders and memory have their own test files)', () => {
     const adders = ['HalfAdder', 'FullAdder', 'Adder8', 'AddSub8'];
     const memory = ['SRLatch', 'DLatch', 'DFF', 'RegBit', 'Register8'];
-    expect([...Object.keys(expected), ...adders, ...memory].sort()).toEqual(library.names().sort());
+    // Phase 4 parts are tested in parts.test.ts and calculator.test.ts.
+    const calculator = [
+      'CONST0', 'MUX4', 'MUX4x8', 'KeyEncoder', 'SetClearBit', 'KeyRegister', 'KeyClassDecoder', 'PLA', 'ControlUnit',
+      'Flags', 'DisplayROM', 'ErrMux', 'SevenSegDecoder', 'ZeroDetect8', 'Calculator',
+    ];
+    expect([...Object.keys(expected), ...adders, ...memory, ...calculator].sort()).toEqual(library.names().sort());
   });
 
   for (const [name, fn] of Object.entries(expected)) {

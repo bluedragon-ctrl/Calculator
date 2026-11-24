@@ -76,6 +76,21 @@ export interface CmosDef {
   pullDown: CmosNet;
 }
 
+/**
+ * A table-driven part (ROM or PLA, DESIGN.md §4.2, §4.3) shown as a table whose active rows
+ * light up. Its inside is the table, not gates.
+ */
+export interface TableDef {
+  kind: 'rom' | 'pla';
+  /** Column headings. */
+  columns: string[];
+  rows: string[][];
+  /** Row ids (e.g. "R3"), one per row. */
+  ids: string[];
+  /** Rows that are active for these input values (in declared input pin order). */
+  active(inputs: readonly Bit[]): number[];
+}
+
 export type GateSymbol = 'not' | 'and' | 'nand' | 'or' | 'nor' | 'xor';
 
 export interface ComponentDef {
@@ -104,4 +119,11 @@ export interface ComponentDef {
    * Cross-coupled latches need them: with every net at 0 they would oscillate (DESIGN.md §11).
    */
   powerOn?: Record<PinRef, Bit>;
+  /** Table view of a ROM or PLA. */
+  table?: TableDef;
+  /**
+   * Transistors of a part that has no gates in the model (a ROM or PLA array), estimated the
+   * way a real array would be built (DESIGN.md §5.6, §11).
+   */
+  transistors?: number;
 }

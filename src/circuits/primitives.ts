@@ -61,8 +61,21 @@ function nor(n: number): ComponentDef {
   };
 }
 
+/** A wire tied to GND: a constant 0 (DESIGN.md §5.2 CONST). No transistors. */
+export const CONST0: ComponentDef = {
+  name: 'CONST0',
+  title: 'Constant 0',
+  blurb: 'A wire connected straight to ground (0 volts), so it is always 0.',
+  size: [1.5, 1],
+  pins: { y: { dir: 'out', side: 'right', at: 0.5 } },
+  behavior: { delay: 0, eval: () => [0] },
+  transistors: 0,
+};
+
+/** The CMOS gates (each has a transistor schematic). */
 export const PRIMITIVES: ComponentDef[] = [NOT, nand(2), nand(3), nand(4), nor(2), nor(3), nor(4)];
 
 export function definePrimitives(lib: Library): void {
   for (const d of PRIMITIVES) defineComponent(lib, d);
+  defineComponent(lib, CONST0);
 }

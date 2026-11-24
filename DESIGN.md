@@ -152,7 +152,7 @@ The calculator uses **hardwired control**, like early pocket-calculator chips: a
 
 The control unit is a **PLA (programmable logic array)**: a list of rules, each one an AND of conditions, OR-ed into outputs. Real chips used PLAs, and it shows well as a **"rulebook" table where the active rule lights up**.
 
-**States** (4-bit encoding, 8 used): `IDLE, DIGIT, OP_CALC, OP_SAVE, EQ_CALC, CLR_1, CLR_2, MEM_STORE, MEM_RECALL` (9 states; adjust the encoding as needed).
+**States** (4-bit binary encoding, 9 used): `IDLE`=0, `DIGIT`=1, `OP_CALC`=2, `OP_SAVE`=3, `EQ_CALC`=4, `CLR_1`=5, `CLR_2`=6, `MEM_STORE`=7, `MEM_RECALL`=8. Codes 9–15 match no rule, so every output is 0 and the next state is `IDLE`.
 
 **Control signals:** `X_LOAD, X_SRC[1:0], Y_LOAD, M_LOAD, OP_LOAD, PEND_SET, PEND_CLR, E_LOAD, E_CLR, READY_CLR, NEXT[3:0]`.
 
@@ -192,9 +192,9 @@ The control unit is a **PLA (programmable logic array)**: a list of rules, each 
 | 2 | R3 | DIGIT | rulebook row R3 lit |
 | 3 | R11: X ← 7 | IDLE | display shows 7 |
 | 4–6 | key `+`, R5, R13: Y ← 7, OP ← 0, PEND ← 1 | IDLE | Y shows 7 |
-| 7–9 | key 9, R3, R11: X ← 9 | IDLE | display 9 |
+| 7–9 | key 9, R3, R11: X ← 9 | IDLE | display 9; **the adder already computes 7 + 9: the carry ripples (slow motion!)** |
 | 10 | key `=` captured | IDLE | |
-| 11 | R6 | EQ_CALC | **carry ripples through the adder (slow motion!)** |
+| 11 | R6 | EQ_CALC | rulebook row R6 lit; the X mux switches to the ALU |
 | 12 | R14: X ← 16, PEND ← 0 | IDLE | display 16 |
 
 ---
@@ -489,7 +489,7 @@ A tiny stored-program CPU (~8 instructions) running the calculator as a program 
 | Type-only dev deps | `@types/three` and `@types/node` added alongside the listed deps (types only, nothing shipped) | |
 | troika-three-text | Not installed until the first in-scene label is needed (Phase 1) | |
 | Base path | Vite `base: './'` so the build works under any Pages sub-path | |
-| Control states (§4.3) | Text says "4-bit encoding, 8 used" but lists 9 states; 4 bits fit all 9. To confirm in Phase 4 | Phase 4 |
+| Control states (§4.3) | Binary 0–8 in the 4-bit STATE register (confirmed in Phase 4). Unused codes 9–15 match no rule, so the PLA outputs all 0 and the next state is IDLE | |
 | Component geometry (Phase 1) | `size` is the box in the parent's units (pins use it); the inside is drawn in an inner frame of `size × innerScale` (default 6), so every zoom level has its own grid | |
 | Net routing (Phase 1) | Optional waypoints are given per sink (`routes: { 'n2.a': [...] }`) instead of one `route` per net; the last leg is auto-routed orthogonally. Junction dots are computed | |
 | Gate delay semantics (Phase 1) | Transport delay: every change is kept, so real glitches (e.g. XOR's n3 going 1→0→1) are simulated and shown | if glitches confuse students |
@@ -519,3 +519,14 @@ A tiny stored-program CPU (~8 instructions) running the calculator as a program 
 | Clock on benches (Phase 3) | A `clk` pin gets a clock source (square-wave mark) instead of a switch; clicking it is one tick. The clock bar's light pulses when the displayed clock rises | |
 | Clock mode "Auto" | Deferred to Phase 4: it needs the control unit (run while busy, pause in IDLE) | Phase 4 |
 | Instant playback fix (Phase 3) | Wires that already existed kept stale values when a timeline played instantly (slider at 0), because only nets mid-transition were re-synced. Now nets that settled since the last frame are re-synced too | |
+| Auto layout (Phase 4) | Big schematics (encoder, decoders, muxes, control, the whole chip) are placed by a column router (`circuits/autoLayout.ts`): parts in columns, one vertical track per net in each channel between columns, feed-throughs through the gaps between parts, feedback nets along their own rows in the top margin. Own inputs/outputs sit level with their wires. The hand-authored layouts of Phases 1–3 stay. The layout tests check every generated layout | if a layout reads badly |
+| Keyboard encoder (Phase 4) | A plain OR encoder (code bit i = OR of the 8 lines whose number has bit i; `pressed` = OR of all 16), not a true priority encoder: the UI never drives two lines at once (key queue). Two lines at once give the OR of their codes, which is tested and could become a detective puzzle | |
+| Flag registers (Phase 4) | READY and PEND are a `SetClearBit` (next = set OR (Q AND NOT clear)), so READY = `pressed` OR (READY AND NOT READY_CLR). E is a register bit loaded when E_LOAD or E_CLR, with V AND NOT E_CLR, exactly §4.3's formula. OP is a register bit loading KEY bit 0. The STATE register is 4 plain flip-flops (loads every tick) | |
+| Datapath details (Phase 4) | ALU A = Y, B = X, so `3 − 5` computes Y − X. X_SRC: KEY = 0, ALU = 1, M = 2, ZERO = 3. MUX4 = three MUX2 (students meet a part they know). The constant 0 is a `CONST0` part (a wire to GND, 0 transistors) feeding the mux's zero input and KEY's upper 4 bits | |
+| ROM and PLA (Phase 4) | Behavioural, defined by a table, with a table view (`table` in the definition). Delay 2 each (decoder/AND plane, then bit lines/OR plane). The PLA ORs the outputs of every active rule; a test checks exactly one rule is active in every reachable situation | |
+| Transistor estimate (Phase 4) | Gates count their CMOS transistors, flip-flops their structure (DFF = 34). ROM and PLA have no gates, so they count as a real NOR array would: ROM = 8 per row (decoder) + 1 per stored 1 + 2 per output; PLA = 1 per condition and per output a rule drives + 2 per rule and output line. A test checks the total against the fully structural netlist | |
+| Err switch, 7-segment, zero detect (Phase 4) | The Err "mux" replaces bits with constants, which needs only AND with NOT E (for a 0) or OR with E (for a 1). The 7-segment decoder is generated from its truth table (Quine–McCluskey, `circuits/gen/sop.ts`) as NAND–NAND; segments with more than 4 terms use two NANDs and an OR. Zero detect = two NOR4 + AND; a NOT next to it drives the M lamp (M ≠ 0) | |
+| Display sign (Phase 4) | The sign has its own fixed position on the left (§4.2: it is only segment g), so −2 shows as `-  2`, not `  -2` | if students find it odd |
+| Carry ripple timing (Phase 4) | The ALU adds Y and X all the time, so in `7 + 9 =` the carry ripples when X becomes 9 (tick 9), not at tick 11 as §4.5 first said. §4.5 updated; mission 8 still works | |
+| Key input (Phase 4) | A pressed key's line goes high at once (input settle); the next tick captures it and the UI releases it right after the edge. A key pressed while a line is held, READY = 1, STATE ≠ IDLE or the queue is not empty waits in the queue; the next queued line goes high once the calculator is free. `circuits/machine.ts` is the headless driver used by tests and the UI | |
+| Clock at device level (Phase 4) | The device world always runs Instant (keys are processed at once, no animation). Inside the chip the clock bar's mode applies, Auto by default | |
