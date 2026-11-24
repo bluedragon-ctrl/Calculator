@@ -16,6 +16,11 @@
           <h3 id="bench-title"></h3>
           <ol id="bench-steps"></ol>
           <section id="bus-panel" aria-label="Numbers" hidden></section>
+          <section id="stats" class="stats" aria-label="Transistor count" hidden>
+            <p id="stats-total"></p>
+            <p id="stats-view"></p>
+            <p id="stats-note" class="muted small"></p>
+          </section>
           <p id="bench-help" class="muted"></p>
           <p id="slowmo-note" class="muted small"></p>
         </aside>
@@ -26,7 +31,7 @@
           <input id="slowmo" type="range" min="0" max="100" value="60" />
           <span id="slowmo-value"></span>
         </label>
-        <button id="home-btn" type="button" title="Back to the whole bench (Home). Backspace zooms out one level.">⌂ Home</button>
+        <button id="home-btn" type="button" title="Back to the whole view (Home). Backspace zooms out one level.">⌂ Home</button>
         <span class="spacer"></span>
         <span id="fps" aria-live="off">— fps</span>
         <button id="quality-btn" type="button" title="Graphics quality">⚙ quality: auto</button>

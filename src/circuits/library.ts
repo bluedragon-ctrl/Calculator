@@ -1,6 +1,11 @@
 // The library of every component in the calculator, in dependency order.
 import { Library } from '../sim/library';
 import { defineAdders } from './adders';
+import { defineCalculator } from './calculator';
+import { defineControl } from './control';
+import { defineDisplay } from './display';
+import { defineKeyboard } from './keyboard';
+import { defineMuxes } from './muxes';
 import { defineGates } from './gates';
 import { definePrimitives } from './primitives';
 import { defineRegisters } from './registers';
@@ -11,6 +16,11 @@ export function createLibrary(): Library {
   defineGates(lib);
   defineAdders(lib);
   defineRegisters(lib);
+  defineMuxes(lib);
+  defineKeyboard(lib);
+  defineControl(lib);
+  defineDisplay(lib);
+  defineCalculator(lib);
   return lib;
 }
 

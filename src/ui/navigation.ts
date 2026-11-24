@@ -17,16 +17,19 @@ export class Navigator {
   onLeave: (() => void) | null = null;
   /** When true, camera moves are instant (prefers-reduced-motion). */
   instant = false;
+  /** When false (the device world is showing), the chip camera ignores the mouse. */
+  enabled = true;
 
   constructor(private readonly stage: Stage) {
     const el = stage.renderer.domElement;
-    el.addEventListener('wheel', (e) => this.wheel(e), { passive: false });
-    el.addEventListener('pointerdown', (e) => this.down(e));
-    el.addEventListener('pointermove', (e) => this.move(e));
-    el.addEventListener('pointerup', (e) => this.up(e));
+    el.addEventListener('wheel', (e) => this.enabled && this.wheel(e), { passive: false });
+    el.addEventListener('pointerdown', (e) => this.enabled && this.down(e));
+    el.addEventListener('pointermove', (e) => this.enabled && this.move(e));
+    el.addEventListener('pointerup', (e) => this.enabled && this.up(e));
     el.addEventListener('pointercancel', () => (this.dragging = null));
-    el.addEventListener('pointerleave', () => this.onLeave?.());
+    el.addEventListener('pointerleave', () => this.enabled && this.onLeave?.());
     el.addEventListener('dblclick', (e) => {
+      if (!this.enabled) return;
       const [x, y] = this.local(e);
       this.onDoubleClick?.(...this.stage.toWorld(x, y));
     });

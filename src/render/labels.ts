@@ -12,6 +12,8 @@ export interface LabelOptions {
   anchorY?: 'top' | 'middle' | 'bottom';
   /** Hide when smaller than this many CSS pixels on screen. */
   minPx?: number;
+  /** Wrap lines longer than this (local units). */
+  maxWidth?: number;
 }
 
 export class Label {
@@ -26,6 +28,10 @@ export class Label {
     t.color = opts.color ?? LABEL;
     t.anchorX = opts.anchorX ?? 'center';
     t.anchorY = opts.anchorY ?? 'middle';
+    if (opts.maxWidth) {
+      t.maxWidth = opts.maxWidth;
+      t.textAlign = 'center';
+    }
     t.position.set(x, y, 0.2);
     t.sync();
     this.text = t;

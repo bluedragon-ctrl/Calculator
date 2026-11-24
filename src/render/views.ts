@@ -27,6 +27,7 @@ import { LABEL_DIM, VDD_COLOR, GND_COLOR } from './palette';
 import { chargeLevel, Playback } from './playback';
 import { gateSymbol, symbolName } from './symbols';
 import { makeLine, Wire, type WireMaterials } from './wires';
+import { TableView } from './table';
 
 /** y-down layout coordinates → y-up local scene coordinates. */
 const flip = (pts: readonly Point[]): Point[] => pts.map(([x, y]) => [x, -y] as Point);
@@ -155,6 +156,7 @@ export class ComponentView {
   private contents: Group | null = null;
   private children: ComponentView[] = [];
   private cmos: CmosView | null = null;
+  private table: TableView | null = null;
   private local: LocalCopy | null = null;
   /** Wants to show its contents (with hysteresis). */
   private target = false;
@@ -196,7 +198,23 @@ export class ComponentView {
   }
 
   get canExpand(): boolean {
-    return !!this.def.parts || !!this.def.cmos;
+    return !!this.def.parts || !!this.def.cmos || !!this.def.table;
+  }
+
+  /** Rows of a ROM/PLA table that are active right now (empty when not a table). */
+  get activeRows(): number[] {
+    if (this.table && this.isExpanded) return this.table.active;
+    if (!this.def.table) return [];
+    return this.def.table.active(inputPins(this.def).map((p) => this.pinValue(p)));
+  }
+
+  /** Transistors drawn on screen: opened instances count their visible children, closed ones themselves. */
+  transistorsInView(view: Rect, count: (def: ComponentDef) => number): number {
+    if (!this.group.visible || !intersects(this.worldBounds, view)) return 0;
+    if (this.isExpanded && this.children.length) {
+      return this.children.reduce((n, c) => n + c.transistorsInView(view, count), 0);
+    }
+    return count(this.def);
   }
 
   /** True once the contents are (mostly) showing. */
@@ -311,6 +329,7 @@ export class ComponentView {
     const pxPerInner = this.innerWorld * view.pxPerWorld;
     for (const d of this.dots) d.visible = this.contentAlpha > 0.5;
     if (this.cmos) this.cmos.update(pxPerInner, this.contentAlpha);
+    if (this.table) this.table.update(this.contentAlpha);
     for (const c of this.children) c.update(view, dtSec, this.contentAlpha);
   }
 
@@ -500,6 +519,14 @@ export class ComponentView {
     this.contents = g;
     this.group.add(g);
 
+    if (def.table) {
+      this.table = new TableView(
+        def, ctx.mats, (net, w) => ctx.nets.add(net, w), (pin) => this.innerNet(pin), (net) => ctx.playback.value(net),
+        innerWorld, fade,
+      );
+      g.add(this.table.group);
+      return;
+    }
     if (def.cmos) {
       this.cmos = new CmosView(ctx, def, innerWorld, (pin) => this.innerNet(pin), fade);
       g.add(this.cmos.group);
@@ -549,6 +576,11 @@ export class ComponentView {
     this.local?.stopListening();
     this.local = null;
     this.cmos?.dispose();
+    if (this.table) {
+      for (const [net, w] of this.table.netWires) this.innerCtx.nets.remove(net, w);
+      this.table.dispose();
+    }
+    this.table = null;
     disposeLines(this.contents);
     this.group.remove(this.contents);
     this.contents = null;

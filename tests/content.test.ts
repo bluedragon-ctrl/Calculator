@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { benches, benchIntro } from '../src/content/bench';
 import { tooltipText, wireBlurb } from '../src/content/tooltips';
 import { library } from '../src/circuits/library';
+import { calculatorPanel, calculatorTips, hudText } from '../src/content/calculator';
+import { clockText } from '../src/content/messages';
 
 const words = (s: string) => s.trim().split(/\s+/).length;
 
@@ -10,6 +12,13 @@ describe('student-facing text', () => {
   it('keeps every bench step and help text to ≤ 40 words', () => {
     for (const b of benches) for (const s of b.steps) expect(words(s), s).toBeLessThanOrEqual(40);
     expect(words(benchIntro.help)).toBeLessThanOrEqual(40);
+  });
+  it('keeps the calculator panel, tooltips and HUD text short', () => {
+    for (const s of calculatorPanel.steps) expect(words(s), s).toBeLessThanOrEqual(40);
+    expect(words(calculatorPanel.help)).toBeLessThanOrEqual(40);
+    for (const s of [...Object.values(calculatorTips), ...Object.values(hudText), ...Object.values(clockText)]) {
+      if (typeof s === 'string') expect(words(s), s).toBeLessThanOrEqual(40);
+    }
   });
   it('keeps tooltips short', () => {
     for (const s of Object.values(tooltipText)) expect(words(s)).toBeLessThanOrEqual(40);
