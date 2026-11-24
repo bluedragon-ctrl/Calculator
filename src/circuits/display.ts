@@ -17,7 +17,7 @@ export function codeText(c: number): string {
   if (c <= 9) return String(c);
   if (c === CODE_E) return 'E';
   if (c === CODE_R) return 'r';
-  return 'blank';
+  return '·';
 }
 
 // --- Display ROM (behavioural, shown as a table) ---
@@ -39,12 +39,12 @@ function displayRom(): ComponentDef {
     name: 'DisplayROM',
     title: 'Display ROM',
     blurb: 'A lookup table with one row for each of the 256 values X can hold. Each row says which sign and digits to show.',
-    size: [9, 15.5],
+    size: [16, 15.5],
     pins,
     behavior: { delay: 2, eval: (inputs) => outBits(addr(inputs)) },
     table: {
       kind: 'rom',
-      columns: ['X', 'binary', 'sign', 'hundreds', 'tens', 'ones'],
+      columns: ['X', 'binary', 'sign', 'hundreds', 'tens', 'ones (· = blank)'],
       ids: DISPLAY_ROM.map((_, a) => String(a)),
       rows: DISPLAY_ROM.map((r, a) => [
         String(a >= 128 ? a - 256 : a),
@@ -178,6 +178,7 @@ function sevenSegDecoder(lib: Library): ComponentDef {
     parts,
     nets,
     innerScale: 3,
+    outputGap: 2,
     extra: { buses: { code: { pins: ['v0', 'v1', 'v2', 'v3'], signed: false } } },
   }, lib);
 }

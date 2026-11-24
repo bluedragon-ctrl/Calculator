@@ -11,7 +11,7 @@ import { BACKGROUND, BLOOM_THRESHOLD, GRID } from './palette';
 export const VIEW_HEIGHT = 24;
 /** Deep enough to fill the screen with one transistor of the 8-bit adder/subtractor. */
 export const MIN_VIEW_HEIGHT = 0.001;
-export const MAX_VIEW_HEIGHT = 80;
+export const MAX_VIEW_HEIGHT = 140;
 
 /** What the orthographic camera looks at. */
 export interface View {

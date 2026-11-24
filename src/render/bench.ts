@@ -195,6 +195,18 @@ export class Bench {
     return null;
   }
 
+  /** Handle a click: flips the switch under the point. Returns true if something was clicked. */
+  click(x: number, y: number): boolean {
+    const pin = this.switchAt(x, y);
+    if (pin) this.toggle(pin);
+    return !!pin;
+  }
+
+  /** Re-apply materials after a quality change. */
+  refreshAll(): void {
+    this.refresh();
+  }
+
   get inputs(): string[] {
     return this.switches.map((s) => s.pin);
   }

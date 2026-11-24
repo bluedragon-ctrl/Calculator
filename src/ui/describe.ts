@@ -4,6 +4,9 @@ import { busValue } from '../sim/bus';
 import { inputPins, outputPins } from '../sim/library';
 import { CLOCK_PIN } from '../sim/simulator';
 import type { Bench, BenchHit } from '../render/bench';
+import type { ChipHit, ChipView } from '../render/chip';
+import { calculatorTips as C } from '../content/calculator';
+import { KEY_LABELS } from '../circuits/machine';
 import type { ComponentView } from '../render/views';
 import { formatBit, formatBus } from './format';
 
@@ -45,17 +48,36 @@ function busOfNet(view: ComponentView, net: number): string | null {
   return null;
 }
 
-export function describe(hit: BenchHit, bench: Bench): TooltipContent {
+/** Active rule or row of a ROM/PLA instance. */
+function tableLines(view: ComponentView): string[] {
+  const t = view.def.table;
+  if (!t) return [];
+  const ids = view.activeRows.map((r) => t.ids[r]);
+  if (t.kind === 'pla') return [C.activeRule(ids)];
+  return ids.map((id) => C.activeRow(t.rows[Number(id)][0]));
+}
+
+export function describe(hit: BenchHit | ChipHit, host: Bench | ChipView): TooltipContent {
   switch (hit.kind) {
     case 'component': {
       const v = hit.view;
       return {
         title: v.displayName,
         body: v.isBehavioural ? `${v.def.blurb} ${T.behaviour}` : v.def.blurb,
-        values: pinLines(v),
-        hint: v.canExpand && !v.isExpanded ? T.zoomHint : undefined,
+        values: [...tableLines(v), ...pinLines(v)],
+        hint: v.def.table && !v.isExpanded ? C.tableHint : v.canExpand && !v.isExpanded ? T.zoomHint : undefined,
       };
     }
+    case 'key':
+      return {
+        title: C.keyTitle(KEY_LABELS[hit.code]),
+        body: C.key,
+        values: [`Key code ${hit.code} = ${hit.code.toString(2).padStart(4, '0')}`, `Key line = ${formatBit(hit.value)}`, ...(hit.queued ? [C.keyQueued] : [])],
+      };
+    case 'clock':
+      return { title: C.clockTitle, body: C.clock, values: [`Clock = ${formatBit(hit.value)}`], hint: C.clockHint };
+    case 'display':
+      return { title: C.displayTitle, body: C.display, values: [] };
     case 'wire': {
       const value = hit.view.wireValue(hit.net);
       const bus = busOfNet(hit.view, hit.net);
@@ -81,6 +103,7 @@ export function describe(hit: BenchHit, bench: Bench): TooltipContent {
       };
     case 'switch':
     case 'lamp': {
+      const bench = host as Bench;
       const bus = Object.entries(bench.def.buses ?? {}).find(([, b]) => b.pins.includes(hit.pin));
       const values = [`${hit.pin.toUpperCase()} = ${formatBit(hit.value)}`];
       if (bus) {

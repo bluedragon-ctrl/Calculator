@@ -112,7 +112,7 @@ function pla(): ComponentDef {
     name: 'PLA',
     title: 'Control rulebook (PLA)',
     blurb: 'A programmable logic array: each row is a rule "in this state, if these conditions hold, do these actions".',
-    size: [12, 16],
+    size: [30, 16],
     pins,
     behavior: {
       delay: 2,

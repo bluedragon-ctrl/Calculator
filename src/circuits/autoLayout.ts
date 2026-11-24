@@ -47,6 +47,8 @@ export interface AutoSpec {
   margin?: number;
   /** Extra space added to the width of every channel. Default 0.5. */
   channelPad?: number;
+  /** Spread the own outputs at least this far apart (inner units); default: level with their wires. */
+  outputGap?: number;
   /** Extra space between consecutive parts of a column, per part name (added above that part). */
   spaceAbove?: Record<string, number>;
   /** Copied to the component. */
@@ -318,6 +320,22 @@ export function autoLayout(spec: AutoSpec, lib: Library): ComponentDef {
     const y = entryY[C + 1].get(i);
     if (y === undefined) fail(`output ${name} has no wire reaching the right edge`);
     outputY.set(name, y!);
+  }
+  if (spec.outputGap) {
+    // Spread the outputs evenly (in their declared order), centred on the wires, and keep them
+    // off the height of any other net's wire entering the last channel.
+    const gap = spec.outputGap;
+    const order = spec.outputs;
+    const mean = order.reduce((s0, o) => s0 + outputY.get(o)!, 0) / order.length;
+    const first = Math.max(margin, mean - ((order.length - 1) * gap) / 2);
+    const entering = [...entryY[C + 1].entries()];
+    order.forEach((o, k) => {
+      const i = infos.findIndex((inf) => inf.net.to.includes(o));
+      let y = first + k * gap;
+      while (entering.some(([li, ly]) => li !== i && Math.abs(ly - y) < pitch * 0.2)) y += pitch * 0.25;
+      outputY.set(o, y);
+      maxBottom = Math.max(maxBottom, y + margin);
+    });
   }
 
   // --- Margin rows for feedback nets (above everything) ---

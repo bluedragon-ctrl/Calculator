@@ -176,6 +176,22 @@ export const benches: BenchText[] = [
       { label: 'D = −7, load off', values: { D: -7, load: 0 }, hint: 'Press Step: Q keeps its value, because LOAD is 0.' },
     ],
   },
+  {
+    component: 'SevenSegDecoder',
+    label: '7-segment',
+    title: '7-segment decoder: drawing digits',
+    steps: [
+      'A display digit has seven bars called segments, a to g. This decoder turns a 4-bit code into the segments to light.',
+      'Type a code from 0 to 9 and see which lamps light. Code 10 draws E and 11 draws r, for "Err".',
+      'Zoom in: each segment is an OR of a few AND terms, built from NAND gates. A computer worked out the shortest terms.',
+    ],
+    presets: [
+      { label: '8: every segment', values: { code: 8 }, hint: 'All seven segments light.' },
+      { label: '1', values: { code: 1 }, hint: 'Only b and c: the two bars on the right.' },
+      { label: '10 = E', values: { code: 10 }, hint: 'Segments a, d, e, f and g draw an E.' },
+      { label: '12 = blank', values: { code: 12 }, hint: 'Nothing lights: used for leading zeros.' },
+    ],
+  },
 ];
 
 export const slowMotionNote = 'Time slowed down about a billion times. The spark shows the signal changing, not electrons moving.';

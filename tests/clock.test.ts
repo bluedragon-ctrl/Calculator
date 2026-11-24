@@ -12,8 +12,22 @@ describe('clock bar logic', () => {
     expect(rateLabel(0.25)).toBe('0.25 ticks/s');
   });
 
+  it('starts in Auto: it ticks only while the control unit has work, at the Play rate', () => {
+    const c = new ClockRunner();
+    expect(c.mode).toBe('auto');
+    c.ticksPerSec = 2;
+    expect(c.update(10_000, false, false)).toBe(false);
+    expect(c.update(1, false, true)).toBe(true); // work arrives: tick at once
+    expect(c.update(100, false, true)).toBe(false);
+    expect(c.update(400, false, true)).toBe(true);
+    expect(c.update(400, true, true)).toBe(false); // waits for the animation
+    expect(c.update(10_000, false, false)).toBe(false); // back in IDLE: stops
+    expect(c.update(1, false, true)).toBe(true);
+  });
+
   it('pause and instant never tick by themselves', () => {
     const c = new ClockRunner();
+    c.setMode('pause');
     expect(c.update(10_000, false)).toBe(false);
     c.setMode('instant');
     expect(c.update(10_000, false)).toBe(false);

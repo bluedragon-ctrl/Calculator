@@ -14,6 +14,8 @@ export const clockText = {
   pauseTitle: 'Stop the clock. Use Step to make one tick at a time.',
   step: '⏭ Step',
   stepTitle: 'One clock tick (Space).',
+  auto: '⟳ Auto',
+  autoTitle: 'The clock runs while the calculator is working, and stops when it is waiting for a key.',
   play: '▶ Play',
   playTitle: 'Run the clock: it ticks again once the last tick has finished.',
   instant: '⚡ Instant',
@@ -21,5 +23,5 @@ export const clockText = {
   speedTitle: 'Clock speed while playing',
   pulseTitle: 'The clock: it lights up on every tick.',
   ticks: (n: number) => `tick ${n}`,
-  noClock: 'This part has no clock. Try the flip-flop or the register.',
+  noClock: 'This part has no clock. Try the flip-flop, the register or the calculator.',
 };

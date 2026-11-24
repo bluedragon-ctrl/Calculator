@@ -93,8 +93,9 @@ function calculator(lib: Library): ComponentDef {
     nets,
     innerScale: 1,
     pitch: 0.5,
-    gap: 3,
-    margin: 3,
+    // Room above every block for its caption in the chip view.
+    gap: 7,
+    margin: 7,
   }, lib);
 }
 
