@@ -39,10 +39,11 @@ export class Label {
     }
   }
 
-  /** Show only when readable: `pxPerUnit` is screen pixels per local unit. */
-  fit(pxPerUnit: number): void {
+  /** Show only when readable: `pxPerUnit` is screen pixels per local unit. `alpha` fades it. */
+  fit(pxPerUnit: number, alpha = 1): void {
     const px = this.text.fontSize * pxPerUnit;
-    this.text.visible = px >= this.minPx && px <= 300;
+    this.text.visible = px >= this.minPx && px <= 300 && alpha > 0.01;
+    if (this.text.fillOpacity !== alpha) this.text.fillOpacity = alpha;
   }
 
   dispose(): void {

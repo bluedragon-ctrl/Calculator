@@ -17,6 +17,16 @@ export interface PartDef {
   type: string;
   /** Top-left corner in the parent's inner coordinates. */
   at: Point;
+  /** Short name shown on the box and in the breadcrumb, e.g. "bit 3". */
+  label?: string;
+}
+
+/** A group of single-bit pins read together as a number (DESIGN.md §6.4: decimal + binary). */
+export interface BusDef {
+  /** Pin names, least significant bit first. */
+  pins: string[];
+  /** Read as two's complement (−128…127 for 8 bits). Default true. */
+  signed?: boolean;
 }
 
 /** A pin reference: `'a'` (own pin) or `'x1.a'` (pin `a` of part `x1`). */
@@ -80,4 +90,6 @@ export interface ComponentDef {
   symbol?: GateSymbol;
   /** Keep this instance as one behavioural node when flattening, even if it has a structure. */
   simulateAs?: 'behavior';
+  /** Pins that together form numbers, keyed by the bus name shown to students (e.g. `A`). */
+  buses?: Record<string, BusDef>;
 }

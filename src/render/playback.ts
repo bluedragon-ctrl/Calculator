@@ -114,3 +114,15 @@ export class Playback {
     this.onSettle?.(net, v);
   }
 }
+
+/**
+ * Charge of a gate's load capacitor (DESIGN.md §6.2a), 0 = empty, 1 = full. It follows the
+ * output: while a change travels along the output wire, the capacitor charges or drains like an
+ * RC circuit (fast at first, then slower). Purely visual; mapped onto the 1-delta gate delay.
+ */
+export function chargeLevel(value: Bit, tr: Transition | null): number {
+  if (!tr) return value;
+  const k = 4;
+  const f = (1 - Math.exp(-k * tr.progress)) / (1 - Math.exp(-k));
+  return tr.from + (tr.to - tr.from) * f;
+}

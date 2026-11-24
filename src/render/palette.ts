@@ -37,3 +37,6 @@ export const OUTLINE_WIDTH = 1.6;
 export const PATH_WIDTH = 12;
 /** Spark diameter in CSS pixels. */
 export const SPARK_PX = 11;
+/** Load capacitor (§6.2a): a faint symbol, and the charge in its gauge (not bloomed). */
+export const CAP_COLOR = new Color('#4d5d85');
+export const CHARGE = new Color('#3df5ff');

@@ -91,6 +91,16 @@ function validate(def: ComponentDef, lib: Library): void {
     }
   }
 
+  for (const [name, bus] of Object.entries(def.buses ?? {})) {
+    if (bus.pins.length === 0) fail(`bus "${name}" has no pins`);
+    const dirs = new Set<string>();
+    for (const p of bus.pins) {
+      if (!def.pins[p]) fail(`bus "${name}" uses unknown pin "${p}"`);
+      dirs.add(def.pins[p].dir);
+    }
+    if (dirs.size > 1) fail(`bus "${name}" mixes inputs and outputs`);
+  }
+
   if (hasStructure) validateStructure(def, lib, fail);
 }
 

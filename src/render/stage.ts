@@ -9,7 +9,8 @@ import { BACKGROUND, BLOOM_THRESHOLD, GRID } from './palette';
 
 /** World units visible vertically at the default zoom. */
 export const VIEW_HEIGHT = 24;
-export const MIN_VIEW_HEIGHT = 0.02;
+/** Deep enough to fill the screen with one transistor of the 8-bit adder/subtractor. */
+export const MIN_VIEW_HEIGHT = 0.001;
 export const MAX_VIEW_HEIGHT = 80;
 
 /** What the orthographic camera looks at. */
