@@ -261,6 +261,14 @@ UI inputs (key lines, lab-bench toggles) inject changes at delta 0 of an **input
 1. **Device world:** a perspective camera showing a stylised 3D calculator (simple geometry; keys with labels; the display driven by the simulated segments). The "Look inside" button, or scrolling into the device, plays a transition: the cover lifts and the camera dives into the chip.
 2. **Chip world:** a **flat 2.5D plane** viewed top-down with an orthographic camera. All schematics live here. Zoom is continuous.
 
+### 6.2a Real parts ("how it looks in real life")
+Realism is added only where it is honest. CMOS logic contains **no resistors or capacitors**, so none are drawn as parts of gates.
+- **Circuit board (device world, Phase 4):** when the cover lifts, a stylised board shows the chip package, battery, display, keypad contacts, a **decoupling capacitor** beside the chip and **pull-up/pull-down resistors** on the key lines. They are props with hover explanations. They are not simulated as analog parts, and the tooltip says so. A key-line resistor may match the logic ("holds the wire at 0 when no key is pressed").
+- **Load capacitance (transistor view, Phase 2):** a faint capacitor symbol at each gate's output. It fills or drains through the highlighted conducting path while the spark travels. This shows the honest reason for the gate delay: charging the tiny unwanted capacitance of the wires. It is purely visual and mapped to the 1-delta delay, with no analog simulation.
+- **Standard transistor symbols (Phase 2):** MOSFET symbols closer to textbooks replace the simplified ones. The switch icons stay.
+- **Silicon view (Phase 4b):** a "Schematic | Silicon" toggle at gate and transistor level. It shows a stylised top-down layout: n/p diffusion (green), polysilicon gates (red), metal (blue), contacts (grey). It is generated from the same series/parallel description as the CMOS schematics, as a standard cell: PMOS row on top, NMOS row at the bottom, inputs as vertical poly stripes. Values light up exactly as in the schematic. The single-transistor bench gets an optional cross-section. It is opt-in, with a short legend, so readability does not suffer.
+- **Reality-check cards:** older logic families (RTL/TTL) did use resistors; a 7400-family chip contains exactly four NAND gates (= our XOR).
+
 ### 6.3 Semantic zoom (level of detail)
 - The scene graph mirrors the instance hierarchy. Every instance has a rectangle in its parent's coordinate space and its own internal layout.
 - **LOD rule:** if an instance's on-screen width < ~140 px, draw it as a **box** (glowing outline, label, pins, bus values). Above ~220 px, draw its **contents**. Crossfade between the two.
@@ -427,7 +435,7 @@ Engine (event-driven, timeline), `defineComponent`, primitives, `AND2`/`OR2`/`XO
 **Done when:** exhaustive truth-table tests pass; the NOT/NAND/NOR/XOR benches work; zooming from XOR → NAND → transistors works.
 
 ### Phase 2: Adder and semantic zoom *(main technical risk; do it early)*
-HalfAdder, FullAdder, Adder8, AddSub8 with overflow. Full LOD system, breadcrumb, fly-to, tooltips. Slow-motion carry ripple.
+HalfAdder, FullAdder, Adder8, AddSub8 with overflow. Full LOD system, breadcrumb, fly-to, tooltips. Slow-motion carry ripple. Load-capacitor animation and standard MOSFET symbols in the transistor view (§6.2a).
 **Done when:** exhaustive test of all 256 × 256 × {add, sub} against JS arithmetic (result + overflow) passes; zooming is smooth from the AddSub8 box down to transistors.
 
 ### Phase 3: Memory and clock
@@ -435,8 +443,12 @@ SR latch, D latch, structural DFF and behavioural DFF (plus an equivalence test)
 **Done when:** the latch and flip-flop benches work and the register loads only on the clock edge with load enabled.
 
 ### Phase 4: Full calculator
-Encoder, key class decoder, muxes, PLA control unit with rulebook view, display ROM (generated) with table view, 7-seg decoders, Err mux, zero-detect, top-level layout, mini-calculator HUD, keyboard input, key queue, 3D device world with fly-in transition, transistor counter.
+Encoder, key class decoder, muxes, PLA control unit with rulebook view, display ROM (generated) with table view, 7-seg decoders, Err mux, zero-detect, top-level layout, mini-calculator HUD, keyboard input, key queue, 3D device world with fly-in transition and circuit board with real-part props (§6.2a), transistor counter.
 **Done when:** scenario tests pass (e.g. `7+9=` → 16, `3-5=` → −2, `9+9+9+...` overflow → Err, `C` clears, `M`/`MR` work, chaining works); the calculator is fully usable at device level and in the chip view.
+
+### Phase 4b: Silicon view
+"Schematic | Silicon" toggle with generated standard-cell layouts for the primitives (§6.2a), consistent values in both views, a legend, and the single-transistor cross-section.
+**Done when:** every primitive has a silicon layout whose transistors match its CMOS netlist (test), and toggling never changes values or zoom position.
 
 ### Phase 5: Learning layer
 Mission system and the 14 missions, glossary, reality-check cards, break-it mode, detective mode, progress saving, first-visit onboarding.
@@ -478,3 +490,13 @@ A tiny stored-program CPU (~8 instructions) running the calculator as a program 
 | troika-three-text | Not installed until the first in-scene label is needed (Phase 1) | |
 | Base path | Vite `base: './'` so the build works under any Pages sub-path | |
 | Control states (§4.3) | Text says "4-bit encoding, 8 used" but lists 9 states; 4 bits fit all 9. To confirm in Phase 4 | Phase 4 |
+| Component geometry (Phase 1) | `size` is the box in the parent's units (pins use it); the inside is drawn in an inner frame of `size × innerScale` (default 6), so every zoom level has its own grid | |
+| Net routing (Phase 1) | Optional waypoints are given per sink (`routes: { 'n2.a': [...] }`) instead of one `route` per net; the last leg is auto-routed orthogonally. Junction dots are computed | |
+| Gate delay semantics (Phase 1) | Transport delay: every change is kept, so real glitches (e.g. XOR's n3 going 1→0→1) are simulated and shown | if glitches confuse students |
+| Spark timing (Phase 1) | A change on a net travels along its wires for one delta step (new value behind the front, spark at the front; dim wave for 1→0). Gates react when it arrives | |
+| CMOS views (Phase 1) | Generated from the series/parallel description of each primitive (no hand-drawn schematics). Internal nodes between series transistors are drawn and lit by switch-level evaluation; the conducting path is highlighted amber (to VDD) or violet (to GND) | |
+| LOD crossfade | Phase 1 swaps box ↔ contents with hysteresis (140/220 px) and no crossfade; contents are cached, not disposed. Crossfade, disposal and culling of deep trees come with the full LOD system in Phase 2 | Phase 2 |
+| Slow-motion range | Slider: 0 = instant, then 20–1000 ms per delta step (§6.5 suggested 20–400) | |
+| Extra benches | AND and OR benches added (needed for mission 5); NAND3/4, NOR3/4 exist and are tested but have no bench yet | Phase 5 |
+| Font | Inter SemiBold (OFL licence, `src/assets/fonts`) bundled for troika; labels are kept to Latin characters so troika never fetches fallback fonts from its CDN | |
+| Real parts (after Phase 1 review) | No resistors/capacitors inside logic (CMOS has none). Real parts appear where honest: board props in the device world (Phase 4), load-capacitor animation and textbook MOSFET symbols (Phase 2), opt-in silicon layout view (new Phase 4b). See §6.2a | |

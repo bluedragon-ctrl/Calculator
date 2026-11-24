@@ -19,3 +19,21 @@ export const WIRE_WIDTH_ON = 4.5;
 /** Low quality: fake glow with a wider additive line. */
 export const GLOW_WIDTH = 14;
 export const GLOW_OPACITY = 0.22;
+
+/** Power rails (DESIGN.md §6.4): warm amber VDD, dim grey GND. Never bloomed. */
+export const VDD_COLOR = new Color('#ffb347');
+export const GND_COLOR = new Color('#5d6880');
+/** Component outlines, frames and labels: readable, never above 1.0. */
+export const OUTLINE = new Color('#7f93c4');
+export const FRAME = new Color('#26324e');
+export const LABEL = new Color('#c9d6f2');
+export const LABEL_DIM = new Color('#7f8fb3');
+/** Transistor channel when on (bloomed on high quality). */
+export const CHANNEL_ON = new Color('#7dffb2');
+/** Conducting-path highlight: towards VDD (output 1) or towards GND (output 0). */
+export const PATH_VDD = new Color('#ffb347');
+export const PATH_GND = new Color('#a58bff');
+export const OUTLINE_WIDTH = 1.6;
+export const PATH_WIDTH = 12;
+/** Spark diameter in CSS pixels. */
+export const SPARK_PX = 11;
