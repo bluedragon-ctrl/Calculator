@@ -3,10 +3,14 @@ import { library } from './circuits/library';
 import { keyCodeFor, Machine } from './circuits/machine';
 import { benches, benchIntro, slowMotionNote, type BenchText } from './content/bench';
 import { calculatorPanel } from './content/calculator';
+import { devicePanel, deviceText, propText } from './content/device';
+import { calculatorTips } from './content/calculator';
+import { KEY_LABELS } from './circuits/machine';
 import { noWebGL } from './content/messages';
 import { tooltipText } from './content/tooltips';
 import { Bench } from './render/bench';
 import { ChipView } from './render/chip';
+import { DeviceWorld } from './render/device';
 import { FADE_SEC, fitView, type Bounds } from './render/lod';
 import { Stage, hasWebGL2 } from './render/stage';
 import type { ComponentView } from './render/views';
@@ -70,6 +74,10 @@ function start(): void {
   /** The calculator itself: one machine for the whole page, whatever is on screen. */
   const machine = new Machine(library);
   let scene: Scene | null = null;
+  /** The 3D device world is showing (instead of the chip world). */
+  let onDevice = true;
+  const device = new DeviceWorld();
+  stage.onResize((w, h) => device.setSize(w, h));
   let busPanel: BusPanel | null = null;
   const host = () => (scene?.kind === 'chip' ? scene.chip : scene?.bench ?? null);
 
@@ -77,6 +85,7 @@ function start(): void {
   const applyMotion = () => {
     mats.sparks = !reducedMotion.matches;
     nav.instant = reducedMotion.matches;
+    device.instant = reducedMotion.matches;
     host()?.setFade(reducedMotion.matches ? 0 : FADE_SEC);
   };
   applyMotion();
@@ -108,6 +117,7 @@ function start(): void {
   // --- Keys: HUD, physical keyboard, chip-world key buttons ---
   /** A calculator key was pressed anywhere. */
   const pressKey = (code: number) => {
+    if (onDevice) device.press(code);
     if (scene?.kind === 'chip') {
       scene.chip.press(code);
       if (clock.mode === 'instant') scene.chip.runUntilIdle();
@@ -151,7 +161,71 @@ function start(): void {
     scene = null;
     tooltip.hide();
   };
+  /** Device-world overlay: a prompt and the Look inside / Into the chip buttons. */
+  const deviceUi = document.createElement('div');
+  deviceUi.className = 'device-ui';
+  const prompt = document.createElement('div');
+  prompt.className = 'device-prompt';
+  const deviceButtons = document.createElement('div');
+  deviceButtons.className = 'device-buttons';
+  const coverBtn = document.createElement('button');
+  coverBtn.type = 'button';
+  const chipBtn = document.createElement('button');
+  chipBtn.type = 'button';
+  chipBtn.className = 'primary';
+  chipBtn.textContent = deviceText.intoChip;
+  deviceButtons.append(coverBtn, chipBtn);
+  deviceUi.append(prompt, deviceButtons);
+  view.append(deviceUi);
+  const fade = document.createElement('div');
+  fade.className = 'fade';
+  view.append(fade);
+  const refreshDeviceUi = () => {
+    const open = device.phase === 'open' || device.phase === 'opening';
+    prompt.textContent = open ? deviceText.promptOpen : deviceText.prompt;
+    coverBtn.textContent = open ? deviceText.closeCover : deviceText.lookInside;
+    coverBtn.classList.toggle('primary', !open);
+    chipBtn.hidden = !open;
+  };
+  coverBtn.addEventListener('click', () => {
+    const open = device.phase === 'open' || device.phase === 'opening';
+    device.setOpen(!open);
+    refreshDeviceUi();
+  });
+  chipBtn.addEventListener('click', () => device.diveIn());
+  const setDevice = (on: boolean) => {
+    onDevice = on;
+    nav.enabled = !on;
+    deviceUi.hidden = !on;
+    hud.visible = !on;
+    tooltip.hide();
+    if (on) {
+      clearScene();
+      $('bus-panel').hidden = true;
+      stats.hidden = true;
+      setPanel(devicePanel.title, devicePanel.steps, devicePanel.help, 'Device');
+      refreshDeviceUi();
+    }
+  };
+  const showDevice = (open = false) => {
+    device.reset(open);
+    setDevice(true);
+  };
+  device.onDived = () => {
+    // Hand over to the chip world: fade through dark and pull back from the middle of the chip.
+    fade.classList.add('on');
+    window.setTimeout(() => {
+      showCalculator();
+      const home = scene?.kind === 'chip' ? scene.chip.homeView(aspect()) : null;
+      if (home) {
+        nav.flyTo({ ...home, height: home.height * 0.12 }, 0);
+        nav.flyTo(home, 1.4);
+      }
+      fade.classList.remove('on');
+    }, reducedMotion.matches ? 0 : 360);
+  };
   const showCalculator = () => {
+    setDevice(false);
     clearScene();
     const chip = new ChipView(machine, library, mats);
     scene = { kind: 'chip', chip };
@@ -167,6 +241,7 @@ function start(): void {
     setPanel(calculatorPanel.title, calculatorPanel.steps, calculatorPanel.help, 'Calculator');
   };
   const showBench = (b: BenchText) => {
+    setDevice(false);
     clearScene();
     const bench = new Bench(library.get(b.component), library, mats);
     scene = { kind: 'bench', bench, text: b };
@@ -181,13 +256,16 @@ function start(): void {
   };
   $('panel-heading').textContent = calculatorPanel.benchHeading;
   $('slowmo-note').textContent = slowMotionNote;
-  {
+  for (const [label, id, fn] of [
+    [deviceText.button, 'Device', () => showDevice()],
+    [calculatorPanel.button, 'Calculator', showCalculator],
+  ] as const) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'calc';
-    btn.textContent = calculatorPanel.button;
-    btn.dataset.component = 'Calculator';
-    btn.addEventListener('click', showCalculator);
+    btn.textContent = label;
+    btn.dataset.component = id;
+    btn.addEventListener('click', fn);
     buttons.append(btn);
   }
   for (const b of benches) {
@@ -221,8 +299,18 @@ function start(): void {
     else goHome();
   };
   const updateBreadcrumb = () => {
+    if (onDevice) {
+      const open = device.phase !== 'closed';
+      breadcrumb.set([
+        { text: deviceText.crumbDevice, onClick: () => device.setOpen(false) },
+        ...(open ? [{ text: deviceText.crumbBoard }] : []),
+      ]);
+      return;
+    }
     if (!scene) return;
-    const crumbs: Crumb[] = [{ text: scene.kind === 'chip' ? 'Calculator' : 'Lab bench', onClick: goHome }];
+    const crumbs: Crumb[] = scene.kind === 'chip'
+      ? [{ text: deviceText.crumbDevice, onClick: () => showDevice(true) }]
+      : [{ text: 'Lab bench', onClick: goHome }];
     const chain = focusChain();
     for (const v of chain) crumbs.push({ text: v.displayName, onClick: () => flyToView(v) });
     if (chain.at(-1)?.isTransistorView) crumbs.push({ text: tooltipText.transistors });
@@ -264,9 +352,54 @@ function start(): void {
     if (hit && 'view' in hit) flyToView(hit.view);
     else if (!hit) goHome();
   };
+  // --- Pointer in the device world: keys, hover over board parts, scroll to look inside ---
+  const canvas = stage.renderer.domElement;
+  const local = (e: MouseEvent) => {
+    const r = canvas.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top] as const;
+  };
+  canvas.addEventListener('pointermove', (e) => {
+    if (!onDevice) return;
+    const [px, py] = local(e);
+    const hit = device.pick(px, py, stage.width, stage.height);
+    canvas.style.cursor = hit?.kind === 'key' ? 'pointer' : '';
+    if (!hit) tooltip.hide();
+    else if (hit.kind === 'key') {
+      tooltip.show({ title: calculatorTips.keyTitle(KEY_LABELS[hit.code]), body: propText.key.body, values: [] }, px, py);
+    } else {
+      const t = propText[hit.id];
+      tooltip.show({ title: t.title, body: t.body, values: [] }, px, py);
+    }
+  });
+  canvas.addEventListener('pointerleave', () => onDevice && tooltip.hide());
+  canvas.addEventListener('click', (e) => {
+    if (!onDevice) return;
+    const [px, py] = local(e);
+    const hit = device.pick(px, py, stage.width, stage.height);
+    if (hit?.kind === 'key') pressKey(hit.code);
+    else if (hit?.kind === 'prop' && hit.id === 'chip') device.diveIn();
+  });
+  canvas.addEventListener('wheel', (e) => {
+    if (!onDevice) return;
+    e.preventDefault();
+    if (Math.abs(e.deltaY) < 4 || device.phase === 'diving') return;
+    if (e.deltaY < 0) {
+      // Scrolling in: first the cover comes off, then we dive into the chip.
+      if (device.phase === 'open') device.diveIn();
+      else if (device.phase !== 'opening') device.setOpen(true);
+    } else if (device.phase === 'open' || device.phase === 'opening') device.setOpen(false);
+    refreshDeviceUi();
+  }, { passive: false });
+
   window.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target instanceof HTMLInputElement) return;
+    if (onDevice && e.key === 'Backspace') {
+      e.preventDefault();
+      device.setOpen(false);
+      refreshDeviceUi();
+      return;
+    }
     if (e.key === 'Home') {
       e.preventDefault();
       goHome();
@@ -325,7 +458,7 @@ function start(): void {
     }
   });
 
-  showCalculator();
+  showDevice();
 
   // --- Frame loop ---
   const fpsEl = $('fps');
@@ -357,6 +490,10 @@ function start(): void {
     mats.worldPerPx = 1 / stage.pxPerWorld;
     h?.update(dtMs, { ...stage.visibleRect, pxPerWorld: stage.pxPerWorld });
     busPanel?.update();
+    if (onDevice) {
+      device.update(dtMs / 1000, (p) => machine.sim.output(p) === 1, machine.mIndicator === 1);
+      if (device.phase === 'open' || device.phase === 'closed') refreshDeviceUi();
+    }
     hud.update({
       segment: (p) => (chip ? chip.outputValue(p) : machine.sim.output(p)) === 1,
       mLamp: (chip ? chip.outputValue('mInd') : machine.mIndicator) === 1,
@@ -375,7 +512,8 @@ function start(): void {
       statsClock = 0;
       statsView.textContent = calculatorPanel.viewTransistors(chip.view.transistorsInView(stage.visibleRect, count));
     }
-    stage.render(dtMs / 1000);
+    if (onDevice) device.render(stage.renderer);
+    else stage.render(dtMs / 1000);
 
     fpsAccum += dtMs;
     fpsFrames++;
@@ -391,7 +529,7 @@ function start(): void {
   if (import.meta.env.DEV) {
     // Dev-only handle for visual checks (Playwright); removed from production builds.
     (window as unknown as Record<string, unknown>).__calc = {
-      stage, nav, clock, machine, pressKey, showCalculator,
+      stage, nav, clock, machine, pressKey, showCalculator, showDevice, device,
       get bench() { return scene?.kind === 'bench' ? scene.bench : null; },
       get chip() { return scene?.kind === 'chip' ? scene.chip : null; },
       showBench: (name: string) => showBench(benches.find((b) => b.component === name)!),

@@ -2,7 +2,7 @@
 // ≤ 40 words per panel step).
 
 export const calculatorPanel = {
-  button: 'Calculator',
+  button: 'Inside the chip',
   title: 'Inside the calculator chip',
   steps: [
     'Type 7 + 9 = on your keyboard, or click the keys. Watch the sparks run from the keys on the left to the display on the right.',
@@ -11,7 +11,7 @@ export const calculatorPanel = {
     'Zoom into the control unit to see its rulebook. The rule that is working right now lights up.',
   ],
   help: 'Keys: 0–9, + − = (or Enter), C (Esc or Delete), M (m), MR (r). Scroll to zoom, drag to move, double-click to fly to a part, Backspace zooms out, Home goes back.',
-  benchHeading: 'Lab bench',
+  benchHeading: 'Explore',
   totalTransistors: (n: number) => `Transistors in this calculator: ${n.toLocaleString('en-US')}`,
   viewTransistors: (n: number) => `Transistors in view: ${n.toLocaleString('en-US')}`,
   transistorNote: 'The display table and the rulebook count as their transistor grids would be built.',
