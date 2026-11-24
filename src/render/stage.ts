@@ -7,8 +7,18 @@ import { BloomEffect, EffectComposer, EffectPass, RenderPass } from 'postprocess
 import type { Quality } from '../ui/quality';
 import { BACKGROUND, BLOOM_THRESHOLD, GRID } from './palette';
 
-/** World units visible vertically at zoom 1. */
-const VIEW_HEIGHT = 24;
+/** World units visible vertically at the default zoom. */
+export const VIEW_HEIGHT = 24;
+export const MIN_VIEW_HEIGHT = 0.02;
+export const MAX_VIEW_HEIGHT = 80;
+
+/** What the orthographic camera looks at. */
+export interface View {
+  cx: number;
+  cy: number;
+  /** World units visible vertically. */
+  height: number;
+}
 
 export function hasWebGL2(): boolean {
   try {
@@ -27,6 +37,7 @@ export class Stage {
   private quality: Quality = 'high';
   private readonly resizeObserver: ResizeObserver;
   private readonly resizeListeners: ((w: number, h: number) => void)[] = [];
+  readonly view: View = { cx: 0, cy: 0, height: VIEW_HEIGHT };
 
   constructor(private readonly host: HTMLElement) {
     this.renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -76,17 +87,55 @@ export class Stage {
     else this.renderer.render(this.scene, this.camera);
   }
 
+  get width(): number {
+    return Math.max(1, this.host.clientWidth);
+  }
+
+  get height(): number {
+    return Math.max(1, this.host.clientHeight);
+  }
+
+  get pxPerWorld(): number {
+    return this.height / this.view.height;
+  }
+
+  /** Canvas-relative CSS pixels → world coordinates. */
+  toWorld(px: number, py: number): [number, number] {
+    const k = 1 / this.pxPerWorld;
+    return [this.view.cx + (px - this.width / 2) * k, this.view.cy - (py - this.height / 2) * k];
+  }
+
+  /** Visible world rectangle. */
+  get visibleRect(): { left: number; right: number; bottom: number; top: number } {
+    const hw = (this.view.height * (this.width / this.height)) / 2;
+    const hh = this.view.height / 2;
+    return { left: this.view.cx - hw, right: this.view.cx + hw, bottom: this.view.cy - hh, top: this.view.cy + hh };
+  }
+
+  setView(v: View): void {
+    this.view.cx = v.cx;
+    this.view.cy = v.cy;
+    this.view.height = Math.min(Math.max(v.height, MIN_VIEW_HEIGHT), MAX_VIEW_HEIGHT);
+    this.applyView();
+  }
+
+  private applyView(): void {
+    const r = this.visibleRect;
+    // The camera sits at the view centre; the frustum is relative to it.
+    this.camera.position.set(this.view.cx, this.view.cy, 10);
+    this.camera.left = r.left - this.view.cx;
+    this.camera.right = r.right - this.view.cx;
+    this.camera.top = r.top - this.view.cy;
+    this.camera.bottom = r.bottom - this.view.cy;
+    this.camera.updateProjectionMatrix();
+  }
+
   private resize(): void {
-    const w = Math.max(1, this.host.clientWidth);
-    const h = Math.max(1, this.host.clientHeight);
+    const w = this.width;
+    const h = this.height;
     this.renderer.setSize(w, h, false);
     this.composer?.setSize(w, h);
-    const aspect = w / h;
-    this.camera.top = VIEW_HEIGHT / 2;
-    this.camera.bottom = -VIEW_HEIGHT / 2;
-    this.camera.left = (-VIEW_HEIGHT * aspect) / 2;
-    this.camera.right = (VIEW_HEIGHT * aspect) / 2;
-    this.camera.updateProjectionMatrix();
+    this.applyView();
     for (const fn of this.resizeListeners) fn(w, h);
   }
 }

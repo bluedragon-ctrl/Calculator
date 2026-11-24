@@ -478,3 +478,12 @@ A tiny stored-program CPU (~8 instructions) running the calculator as a program 
 | troika-three-text | Not installed until the first in-scene label is needed (Phase 1) | |
 | Base path | Vite `base: './'` so the build works under any Pages sub-path | |
 | Control states (§4.3) | Text says "4-bit encoding, 8 used" but lists 9 states; 4 bits fit all 9. To confirm in Phase 4 | Phase 4 |
+| Component geometry (Phase 1) | `size` is the box in the parent's units (pins use it); the inside is drawn in an inner frame of `size × innerScale` (default 6), so every zoom level has its own grid | |
+| Net routing (Phase 1) | Optional waypoints are given per sink (`routes: { 'n2.a': [...] }`) instead of one `route` per net; the last leg is auto-routed orthogonally. Junction dots are computed | |
+| Gate delay semantics (Phase 1) | Transport delay: every change is kept, so real glitches (e.g. XOR's n3 going 1→0→1) are simulated and shown | if glitches confuse students |
+| Spark timing (Phase 1) | A change on a net travels along its wires for one delta step (new value behind the front, spark at the front; dim wave for 1→0). Gates react when it arrives | |
+| CMOS views (Phase 1) | Generated from the series/parallel description of each primitive (no hand-drawn schematics). Internal nodes between series transistors are drawn and lit by switch-level evaluation; the conducting path is highlighted amber (to VDD) or violet (to GND) | |
+| LOD crossfade | Phase 1 swaps box ↔ contents with hysteresis (140/220 px) and no crossfade; contents are cached, not disposed. Crossfade, disposal and culling of deep trees come with the full LOD system in Phase 2 | Phase 2 |
+| Slow-motion range | Slider: 0 = instant, then 20–1000 ms per delta step (§6.5 suggested 20–400) | |
+| Extra benches | AND and OR benches added (needed for mission 5); NAND3/4, NOR3/4 exist and are tested but have no bench yet | Phase 5 |
+| Font | Inter SemiBold (OFL licence, `src/assets/fonts`) bundled for troika; labels are kept to Latin characters so troika never fetches fallback fonts from its CDN | |

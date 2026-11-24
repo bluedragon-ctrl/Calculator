@@ -12,7 +12,24 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; }
 #app { display: flex; flex-direction: column; height: 100%; }
-#view { position: relative; flex: 1; min-height: 0; }
+#workspace { flex: 1; min-height: 0; display: flex; }
+#view { position: relative; flex: 1; min-width: 0; }
+#panel {
+  width: 300px; flex: none; overflow-y: auto; padding: 1rem 1.1rem;
+  background: var(--panel); border-left: 1px solid var(--panel-border);
+  font-size: 15px; line-height: 1.5;
+}
+#panel h2 { margin: 0 0 0.6rem; font-size: 18px; }
+#panel h3 { margin: 1rem 0 0.4rem; font-size: 16px; color: var(--accent); }
+#panel ol { margin: 0; padding-left: 1.2rem; }
+#panel li { margin-bottom: 0.5rem; }
+#bench-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+#bench-buttons button[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.slowmo { display: flex; align-items: center; gap: 0.5rem; color: var(--muted); }
+.slowmo input { width: 140px; accent-color: var(--accent); }
+#slowmo-value { min-width: 7.5em; font-variant-numeric: tabular-nums; }
 #view canvas { display: block; width: 100%; height: 100%; }
 #clock-bar {
   display: flex; align-items: center; gap: 1rem;
