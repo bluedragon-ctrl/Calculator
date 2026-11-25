@@ -25,6 +25,12 @@ const expected: Record<string, (v: Bit[]) => Bit> = {
   MUX2: ([a, s, bb]) => (s ? bb : a),
 };
 
+/** The single-transistor bench parts: the lamp lights when the transistor conducts. */
+const transistors: Record<string, (v: Bit[]) => Bit> = {
+  NMOS: ([g]) => g,
+  PMOS: ([g]) => b(g === 0),
+};
+
 describe('truth tables', () => {
   it('covers every gate in the library (adders and memory have their own test files)', () => {
     const adders = ['HalfAdder', 'FullAdder', 'Adder8', 'AddSub8'];
@@ -34,10 +40,10 @@ describe('truth tables', () => {
       'CONST0', 'MUX4', 'MUX4x8', 'KeyEncoder', 'SetClearBit', 'KeyRegister', 'KeyClassDecoder', 'PLA', 'ControlUnit',
       'Flags', 'DisplayROM', 'ErrMux', 'SevenSegDecoder', 'ZeroDetect8', 'Calculator',
     ];
-    expect([...Object.keys(expected), ...adders, ...memory, ...calculator].sort()).toEqual(library.names().sort());
+    expect([...Object.keys(expected), ...Object.keys(transistors), ...adders, ...memory, ...calculator].sort()).toEqual(library.names().sort());
   });
 
-  for (const [name, fn] of Object.entries(expected)) {
+  for (const [name, fn] of Object.entries({ ...expected, ...transistors })) {
     it(name, () => {
       const def = library.get(name);
       const ins = inputPins(def);
@@ -46,9 +52,9 @@ describe('truth tables', () => {
       const rows = allInputs(ins.length);
       for (const row of [...rows, ...[...rows].reverse()]) {
         const inputs = Object.fromEntries(ins.map((p, i) => [p, row[i]]));
-        expect(sim.apply(inputs).y, `${name}(${row.join(',')})`).toBe(fn(row));
+        expect(Object.values(sim.apply(inputs))[0], `${name}(${row.join(',')})`).toBe(fn(row));
         // A fresh simulator agrees (no hidden state).
-        expect(new Simulator(flatten(def, library)).apply(inputs).y).toBe(fn(row));
+        expect(Object.values(new Simulator(flatten(def, library)).apply(inputs))[0]).toBe(fn(row));
       }
     });
   }

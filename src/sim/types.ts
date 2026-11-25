@@ -70,10 +70,15 @@ export type CmosNet =
   | { kind: 'parallel'; parts: CmosNet[] };
 
 export interface CmosDef {
-  /** PMOS network between VDD and the output. */
+  /** Network between VDD and the output (PMOS in every gate). */
   pullUp: CmosNet;
-  /** NMOS network between the output and GND. */
-  pullDown: CmosNet;
+  /** NMOS network between the output and GND. Absent on the single-transistor benches. */
+  pullDown?: CmosNet;
+  /**
+   * Transistor type of the pull-up network. Default 'p'. The N-type transistor bench uses 'n':
+   * one switch between power and the lamp (DESIGN.md §11, Phase 4b).
+   */
+  upType?: 'p' | 'n';
 }
 
 /**

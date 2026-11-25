@@ -183,3 +183,37 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 .fade.on { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .fade { transition: none; } }
+
+/* Schematic | Silicon toggle and legend (Phase 4b) */
+.view-toggle {
+  position: absolute; top: 40px; right: 10px; z-index: 2;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px; font-size: 13px;
+}
+.view-toggle-row { display: flex; gap: 6px; }
+.segmented { display: flex; }
+.segmented button { border-radius: 0; background: rgba(13, 20, 36, 0.9); }
+.segmented button:first-child { border-radius: 6px 0 0 6px; }
+.segmented button:last-child { border-radius: 0 6px 6px 0; border-left: none; }
+/* Pressed: accent border and text, plus bold (not colour alone). */
+.segmented button[aria-pressed='true'], .legend-btn[aria-expanded='true'] {
+  border-color: var(--accent); color: var(--accent); font-weight: 700;
+}
+.legend-btn { background: rgba(13, 20, 36, 0.9); }
+.legend {
+  width: 270px; padding: 8px 10px; border-radius: 8px; line-height: 1.4;
+  background: rgba(13, 20, 36, 0.95); border: 1px solid var(--panel-border);
+}
+.legend ul { list-style: none; margin: 6px 0; padding: 0; }
+.legend li { margin-bottom: 4px; }
+.legend p { margin: 4px 0 0; }
+.legend .swatch {
+  display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px;
+  border-radius: 2px; border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.swatch.diff { background: #2fa35f; }
+.swatch.poly { background: #d9473c; }
+.swatch.metal { background: #3f78e0; }
+.swatch.contact { background: #b8c1d1; width: 8px; height: 8px; margin: 2px 8px 0 2px; }
+.swatch.well { background: #1a3125; }
+.cross-btn { margin: 0.4rem 0 0.2rem; }
+.cross-btn[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); }

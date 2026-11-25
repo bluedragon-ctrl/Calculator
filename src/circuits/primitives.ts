@@ -72,10 +72,33 @@ export const CONST0: ComponentDef = {
   transistors: 0,
 };
 
+/**
+ * A single transistor for the lab bench (DESIGN.md §7.2, mission 3): a switch between power and
+ * a lamp. The lamp lights when the transistor conducts; when it does not, no current reaches the
+ * lamp, so it reads 0 (at switch level the lamp's wire is simply not connected).
+ */
+function transistor(type: 'n' | 'p'): ComponentDef {
+  return {
+    name: type === 'n' ? 'NMOS' : 'PMOS',
+    title: type === 'n' ? 'N-type transistor' : 'P-type transistor',
+    blurb: type === 'n'
+      ? 'A switch controlled by a wire: it conducts when its gate is 1.'
+      : 'A switch controlled by a wire: it conducts when its gate is 0.',
+    size: [2, 2],
+    pins: { g: { dir: 'in', side: 'left', at: 1 }, out: { dir: 'out', side: 'right', at: 1 } },
+    behavior: { delay: 1, eval: ([g]) => [type === 'n' ? g : not(g === 1)] },
+    cmos: { pullUp: fet('g'), upType: type },
+  };
+}
+
 /** The CMOS gates (each has a transistor schematic). */
 export const PRIMITIVES: ComponentDef[] = [NOT, nand(2), nand(3), nand(4), nor(2), nor(3), nor(4)];
 
+/** The single-transistor bench parts (not used in the calculator). */
+export const TRANSISTORS: ComponentDef[] = [transistor('n'), transistor('p')];
+
 export function definePrimitives(lib: Library): void {
   for (const d of PRIMITIVES) defineComponent(lib, d);
+  for (const d of TRANSISTORS) defineComponent(lib, d);
   defineComponent(lib, CONST0);
 }

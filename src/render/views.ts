@@ -28,6 +28,8 @@ import { chargeLevel, Playback } from './playback';
 import { gateSymbol, symbolName } from './symbols';
 import { makeLine, Wire, type WireMaterials } from './wires';
 import { TableView } from './table';
+import { SiliconView } from './silicon';
+import type { Layer } from '../circuits/siliconLayout';
 
 /** y-down layout coordinates → y-up local scene coordinates. */
 const flip = (pts: readonly Point[]): Point[] => pts.map(([x, y]) => [x, -y] as Point);
@@ -101,7 +103,17 @@ export interface ViewContext {
   playback: Playback;
   /** Crossfade duration in seconds; 0 = instant (reduced motion). */
   fadeSec: number;
+  /** "Schematic | Silicon" toggle (DESIGN.md §6.2a), shared by every view of the scene. */
+  silicon: SiliconMode;
 }
+
+/** Which drawing a primitive's inside uses. One object shared by reference, so flipping it reaches every view. */
+export interface SiliconMode {
+  on: boolean;
+}
+
+/** What a hovered silicon layer is: its layer, node and value (null when it has none). */
+export type SiliconLayerKind = Layer | 'well';
 
 export interface ViewRect extends Rect {
   pxPerWorld: number;
@@ -111,8 +123,24 @@ export interface ViewRect extends Rect {
 export type Hit =
   | { kind: 'component'; view: ComponentView }
   | { kind: 'wire'; view: ComponentView; net: number; name: string }
-  | { kind: 'fet'; view: ComponentView; fet: FetLayout; on: boolean; gate: Bit }
-  | { kind: 'cap'; view: ComponentView; charge: number };
+  | { kind: 'fet'; view: ComponentView; fet: { type: 'p' | 'n'; input: string }; on: boolean; gate: Bit }
+  | { kind: 'cap'; view: ComponentView; charge: number }
+  | { kind: 'layer'; view: ComponentView; layer: SiliconLayerKind; node: string | null; value: Bit | null };
+
+type WithoutView<T> = T extends unknown ? Omit<T, 'view'> : never;
+/** A hit inside a primitive's transistor view (the component view adds itself). */
+export type InnerHit = WithoutView<Exclude<Hit, { kind: 'component' }>>;
+
+/** A primitive's inside: the CMOS schematic or the silicon layout. */
+export interface TransistorView {
+  readonly group: Group;
+  readonly silicon: boolean;
+  /** Input and output wires with their nets, for hover. */
+  readonly signalWires: { node: string; points: Point[]; net: number }[];
+  update(pxPerUnit: number, alpha: number): void;
+  hit(x: number, y: number, tol: number): InnerHit | null;
+  dispose(): void;
+}
 
 /** The local structural copy behind an opened behavioural instance. */
 interface LocalCopy {
@@ -155,7 +183,7 @@ export class ComponentView {
   private readonly frame = new Group();
   private contents: Group | null = null;
   private children: ComponentView[] = [];
-  private cmos: CmosView | null = null;
+  private cmos: TransistorView | null = null;
   private table: TableView | null = null;
   private local: LocalCopy | null = null;
   /** Wants to show its contents (with hysteresis). */
@@ -234,6 +262,16 @@ export class ComponentView {
 
   get isTransistorView(): boolean {
     return !!this.cmos && this.isExpanded;
+  }
+
+  /** The transistor view shown is the silicon layout. */
+  get isSiliconView(): boolean {
+    return !!this.cmos?.silicon && this.isExpanded;
+  }
+
+  /** Gate level (DESIGN.md §6.2a): opened, with primitive gates among its parts. */
+  get showsGates(): boolean {
+    return this.isExpanded && this.children.some((c) => !!c.def.cmos);
   }
 
   /** Simulated as one behavioural node, so its inside is a local structural copy (§5.2). */
@@ -328,6 +366,7 @@ export class ComponentView {
     for (const lb of this.frameLabels) lb.fit(pxPerBox, this.contentAlpha);
     const pxPerInner = this.innerWorld * view.pxPerWorld;
     for (const d of this.dots) d.visible = this.contentAlpha > 0.5;
+    if (this.cmos && this.cmos.silicon !== this.innerCtx.silicon.on) this.buildTransistorView();
     if (this.cmos) this.cmos.update(pxPerInner, this.contentAlpha);
     if (this.table) this.table.update(this.contentAlpha);
     for (const c of this.children) c.update(view, dtSec, this.contentAlpha);
@@ -528,11 +567,7 @@ export class ComponentView {
       return;
     }
     if (def.cmos) {
-      this.cmos = new CmosView(ctx, def, innerWorld, (pin) => this.innerNet(pin), fade);
-      g.add(this.cmos.group);
-      this.wireHits = this.cmos.signalWires.map(({ node, points, net }) => ({
-        net, name: node === OUT ? 'output' : `input ${node.slice(3)}`, pts: points.map((p) => this.toWorld(p)),
-      }));
+      this.buildTransistorView();
       return;
     }
     for (const net of def.nets ?? []) {
@@ -564,6 +599,25 @@ export class ComponentView {
       g.add(child.group);
       this.children.push(child);
     }
+  }
+
+  /**
+   * (Re)build a primitive's inside as a schematic or as silicon, following the toggle. Only the
+   * drawing changes: the nets, playback and camera are untouched, so values and zoom stay put.
+   */
+  private buildTransistorView(): void {
+    const ctx = this.innerCtx;
+    if (this.cmos) {
+      this.cmos.dispose();
+      disposeLines(this.cmos.group);
+      this.contents!.remove(this.cmos.group);
+    }
+    const args = [ctx, this.def, this.innerWorld, (pin: string) => this.innerNet(pin), this.contentFade] as const;
+    this.cmos = ctx.silicon.on ? new SiliconView(...args) : new CmosView(...args);
+    this.contents!.add(this.cmos.group);
+    this.wireHits = this.cmos.signalWires.map(({ node, points, net }) => ({
+      net, name: node === OUT ? 'output' : `input ${node.slice(3)}`, pts: points.map((p) => this.toWorld(p)),
+    }));
   }
 
   private disposeContents(): void {
@@ -622,19 +676,20 @@ interface NodeWire {
 }
 
 /** Transistor-level view of one CMOS primitive (inner coordinates of the gate). */
-class CmosView {
+class CmosView implements TransistorView {
+  readonly silicon = false;
   readonly group = new Group();
   /** Input and output wires with their nets, for hover. */
   readonly signalWires: { node: string; points: Point[]; net: number }[] = [];
   private readonly netlist: CmosNetlist;
-  private readonly layout: { fets: FetLayout[]; cap: CapLayout };
+  private readonly layout: { fets: FetLayout[]; cap: CapLayout | null };
   private readonly fets: FetParts[] = [];
   private readonly nodes: NodeWire[] = [];
   private readonly inputNets: [string, number][];
   private readonly outNet: number;
   private readonly labels: Label[] = [];
   private readonly wires: [number | null, Wire][] = [];
-  private readonly gaugeFill: Mesh;
+  private readonly gaugeFill: Mesh | null = null;
   private readonly gaugeGeom = new PlaneGeometry(1, 1);
   private on: boolean[] = [];
   private lastKey = '';
@@ -693,12 +748,14 @@ class CmosView {
 
     // Load capacitor (§6.2a): faint plates and a gauge showing the stored charge.
     const { cap } = layout;
-    const [gx0, gy0, gx1, gy1] = cap.gauge;
-    this.group.add(line(cap.plateTop, mats.cap), line(cap.plateBottom, mats.cap));
-    this.group.add(line([[gx0, gy0], [gx1, gy0], [gx1, gy1], [gx0, gy1], [gx0, gy0]], mats.cap));
-    this.gaugeFill = new Mesh(this.gaugeGeom, mats.charge);
-    this.gaugeFill.position.z = -0.01;
-    this.group.add(this.gaugeFill);
+    if (cap) {
+      const [gx0, gy0, gx1, gy1] = cap.gauge;
+      this.group.add(line(cap.plateTop, mats.cap), line(cap.plateBottom, mats.cap));
+      this.group.add(line([[gx0, gy0], [gx1, gy0], [gx1, gy1], [gx0, gy1], [gx0, gy0]], mats.cap));
+      this.gaugeFill = new Mesh(this.gaugeGeom, mats.charge);
+      this.gaugeFill.position.z = -0.01;
+      this.group.add(this.gaugeFill);
+    }
 
     for (const l of layout.labels) {
       const isVdd = l.text.startsWith('VDD');
@@ -710,10 +767,15 @@ class CmosView {
     }
     const [w, h] = innerSize(def);
     // In the margins above VDD and below GND, clear of the rails.
-    const pu = new Label('pull-up: PMOS', w - 0.3, -0.42, { size: 0.5, anchorX: 'right', color: LABEL_DIM });
-    const pd = new Label('pull-down: NMOS', w - 0.3, -(h - 0.42), { size: 0.5, anchorX: 'right', color: LABEL_DIM });
-    this.group.add(pu.text, pd.text);
-    this.labels.push(pu, pd);
+    const pu: Label = new Label('pull-up: PMOS', w - 0.3, -0.42, { size: 0.5, anchorX: 'right', color: LABEL_DIM });
+    if (def.cmos!.pullDown) {
+      // (A bench transistor has no pull-up/pull-down pair: its bench title names it.)
+      this.group.add(pu.text);
+      this.labels.push(pu);
+      const pd = new Label('pull-down: NMOS', w - 0.3, -(h - 0.42), { size: 0.5, anchorX: 'right', color: LABEL_DIM });
+      this.group.add(pd.text);
+      this.labels.push(pd);
+    }
   }
 
   /** Current charge of the load capacitor, 0…1. */
@@ -760,6 +822,7 @@ class CmosView {
 
   /** The gauge fills from the bottom as the output's wire charges up. */
   private updateGauge(alpha: number): void {
+    if (!this.layout.cap || !this.gaugeFill) return;
     const [x0, y0, x1, y1] = this.layout.cap.gauge;
     const c = this.charge;
     const fill = Math.max(c, 0.001) * (y1 - y0);
@@ -769,7 +832,7 @@ class CmosView {
   }
 
   /** Transistor or capacitor at a point in inner coordinates (y down). */
-  hit(x: number, y: number, tol: number): Omit<Extract<Hit, { kind: 'fet' }>, 'view'> | Omit<Extract<Hit, { kind: 'cap' }>, 'view'> | null {
+  hit(x: number, y: number, tol: number): InnerHit | null {
     for (const f of this.layout.fets) {
       if (Math.abs(x - (f.x + 0.3)) <= 1.1 + tol && Math.abs(y - f.y) <= f.half + tol) {
         const gate = this.ctx.playback.value(this.inputNets.find(([p]) => p === f.input)![1]);
@@ -777,6 +840,7 @@ class CmosView {
       }
     }
     const { cap } = this.layout;
+    if (!cap) return null;
     const [, gy0, gx1, gy1] = cap.gauge;
     if (x >= cap.plateTop[0][0] - tol && x <= gx1 + tol && y >= gy0 - tol && y <= gy1 + tol) {
       return { kind: 'cap', charge: this.charge };

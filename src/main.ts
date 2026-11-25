@@ -30,6 +30,9 @@ import {
 import { msLabel, sliderToMs } from './ui/slowmo';
 import { ClockRunner } from './ui/clock';
 import { ClockBar } from './ui/clockBar';
+import { ViewToggle } from './ui/viewToggle';
+import { crossText, siliconText } from './content/silicon';
+import type { SiliconMode } from './render/views';
 
 /** Slow-motion slider position used when the calculator is first shown (about 30 ms per step). */
 const CALCULATOR_SLOWMO = 12;
@@ -128,6 +131,9 @@ function start(): void {
     }
   };
   const hud = new Hud(view, pressKey);
+  /** Schematic | Silicon (DESIGN.md §6.2a): one mode for every view, kept while switching scenes. */
+  const silicon: SiliconMode = { on: false };
+  const viewToggle = new ViewToggle(view, silicon, () => refreshHover());
 
   // --- Panel and scenes ---
   const buttons = $('bench-buttons');
@@ -204,6 +210,7 @@ function start(): void {
       $('bus-panel').hidden = true;
       stats.hidden = true;
       setPanel(devicePanel.title, devicePanel.steps, devicePanel.help, 'Device');
+      refreshCrossBtn();
       refreshDeviceUi();
     }
   };
@@ -227,7 +234,7 @@ function start(): void {
   const showCalculator = () => {
     setDevice(false);
     clearScene();
-    const chip = new ChipView(machine, library, mats);
+    const chip = new ChipView(machine, library, mats, silicon);
     scene = { kind: 'chip', chip };
     chip.onClockRise(() => clockBar.flash());
     if (!slowmoTouched) slider.value = String(CALCULATOR_SLOWMO);
@@ -239,11 +246,31 @@ function start(): void {
     $('bus-panel').hidden = true;
     stats.hidden = false;
     setPanel(calculatorPanel.title, calculatorPanel.steps, calculatorPanel.help, 'Calculator');
+    refreshCrossBtn();
   };
+  // Cross-section button (single-transistor benches only, DESIGN.md §6.2a).
+  const crossBtn = document.createElement('button');
+  crossBtn.type = 'button';
+  crossBtn.className = 'cross-btn';
+  crossBtn.title = crossText.buttonTitle;
+  crossBtn.hidden = true;
+  $('bench-steps').after(crossBtn);
+  const refreshCrossBtn = () => {
+    const bench = scene?.kind === 'bench' ? scene.bench : null;
+    crossBtn.hidden = !bench?.hasCrossSection;
+    crossBtn.textContent = bench?.crossSectionShown ? crossText.hide : crossText.show;
+    crossBtn.setAttribute('aria-pressed', String(!!bench?.crossSectionShown));
+  };
+  crossBtn.addEventListener('click', () => {
+    if (scene?.kind !== 'bench') return;
+    scene.bench.setCrossSection(!scene.bench.crossSectionShown);
+    refreshCrossBtn();
+    nav.flyTo(scene.bench.homeView(aspect()));
+  });
   const showBench = (b: BenchText) => {
     setDevice(false);
     clearScene();
-    const bench = new Bench(library.get(b.component), library, mats);
+    const bench = new Bench(library.get(b.component), library, mats, silicon);
     scene = { kind: 'bench', bench, text: b };
     bench.onClockRise(() => clockBar.flash());
     bench.setSlowMotion(msPerDelta);
@@ -253,6 +280,7 @@ function start(): void {
     nav.flyTo(bench.homeView(aspect()), 0);
     stats.hidden = true;
     setPanel(b.title, b.steps, benchIntro.help, b.component);
+    refreshCrossBtn();
   };
   $('panel-heading').textContent = calculatorPanel.benchHeading;
   $('slowmo-note').textContent = slowMotionNote;
@@ -301,6 +329,7 @@ function start(): void {
   const updateBreadcrumb = () => {
     if (onDevice) {
       const open = device.phase !== 'closed';
+      viewToggle.visible = false;
       breadcrumb.set([
         { text: deviceText.crumbDevice, onClick: () => device.setOpen(false) },
         ...(open ? [{ text: deviceText.crumbBoard }] : []),
@@ -313,8 +342,11 @@ function start(): void {
       : [{ text: 'Lab bench', onClick: goHome }];
     const chain = focusChain();
     for (const v of chain) crumbs.push({ text: v.displayName, onClick: () => flyToView(v) });
-    if (chain.at(-1)?.isTransistorView) crumbs.push({ text: tooltipText.transistors });
+    const last = chain.at(-1);
+    if (last?.isTransistorView) crumbs.push({ text: last.isSiliconView ? siliconText.crumb : tooltipText.transistors });
     breadcrumb.set(crumbs);
+    // The toggle belongs to gate and transistor level.
+    viewToggle.visible = !!last && (!!last.def.cmos || last.showsGates);
   };
   $('home-btn').addEventListener('click', goHome);
 
@@ -529,7 +561,7 @@ function start(): void {
   if (import.meta.env.DEV) {
     // Dev-only handle for visual checks (Playwright); removed from production builds.
     (window as unknown as Record<string, unknown>).__calc = {
-      stage, nav, clock, machine, pressKey, showCalculator, showDevice, device,
+      stage, nav, clock, machine, pressKey, showCalculator, showDevice, device, silicon, viewToggle,
       get bench() { return scene?.kind === 'bench' ? scene.bench : null; },
       get chip() { return scene?.kind === 'chip' ? scene.chip : null; },
       showBench: (name: string) => showBench(benches.find((b) => b.component === name)!),
