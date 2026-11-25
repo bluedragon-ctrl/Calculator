@@ -44,8 +44,8 @@ export function cmosNetlist(cmos: CmosDef): CmosNetlist {
       });
     }
   };
-  build(cmos.pullUp, VDD, OUT, 'p');
-  build(cmos.pullDown, OUT, GND, 'n');
+  build(cmos.pullUp, VDD, OUT, cmos.upType ?? 'p');
+  if (cmos.pullDown) build(cmos.pullDown, OUT, GND, 'n');
   return { transistors, nodes };
 }
 

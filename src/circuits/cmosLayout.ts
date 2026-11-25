@@ -53,7 +53,8 @@ export interface CmosLayout {
   height: number;
   fets: FetLayout[];
   wires: CmosWire[];
-  cap: CapLayout;
+  /** Absent on the single-transistor benches (no pull-down, so nothing to discharge it). */
+  cap: CapLayout | null;
   labels: { text: string; at: Point }[];
 }
 
@@ -165,27 +166,32 @@ export function cmosLayout(def: ComponentDef): CmosLayout {
     }
   };
 
-  place(def.cmos.pullUp, VDD, OUT, yVdd, yOut, 'p');
-  place(def.cmos.pullDown, OUT, GND, yOut, yGnd, 'n');
+  const { pullUp, pullDown, upType } = def.cmos;
+  place(pullUp, VDD, OUT, yVdd, yOut, upType ?? 'p');
+  if (pullDown) place(pullDown, OUT, GND, yOut, yGnd, 'n');
 
   // Load capacitance: right of the pull-down network, from OUT down to GND.
-  const cx = maxNX + LEAD_DX + 2.4;
-  const yMid = (yOut + yGnd) / 2;
-  const gap = 0.22;
-  const plateW = 0.6;
-  const cap: CapLayout = {
-    x: cx,
-    plateTop: [[cx - plateW, yMid - gap], [cx + plateW, yMid - gap]],
-    plateBottom: [[cx - plateW, yMid + gap], [cx + plateW, yMid + gap]],
-    gauge: [cx + plateW + 0.35, yMid - 0.9, cx + plateW + 0.6, yMid + 0.9],
-  };
-  wires.push({ node: OUT, points: [[cx, yOut], [cx, yMid - gap]] });
-  wires.push({ node: GND, points: [[cx, yMid + gap], [cx, yGnd]] });
+  let cap: CapLayout | null = null;
+  let railEnd = maxX + LEAD_DX + 1;
+  if (pullDown) {
+    const cx = maxNX + LEAD_DX + 2.4;
+    const yMid = (yOut + yGnd) / 2;
+    const gap = 0.22;
+    const plateW = 0.6;
+    cap = {
+      x: cx,
+      plateTop: [[cx - plateW, yMid - gap], [cx + plateW, yMid - gap]],
+      plateBottom: [[cx - plateW, yMid + gap], [cx + plateW, yMid + gap]],
+      gauge: [cx + plateW + 0.35, yMid - 0.9, cx + plateW + 0.6, yMid + 0.9],
+    };
+    wires.push({ node: OUT, points: [[cx, yOut], [cx, yMid - gap]] });
+    wires.push({ node: GND, points: [[cx, yMid + gap], [cx, yGnd]] });
+    railEnd = Math.max(railEnd, cx + 0.8);
+  }
 
   // Rails and output.
-  const railEnd = Math.max(maxX + LEAD_DX + 1, cx + 0.8);
   wires.push({ node: VDD, points: [[x0 - 1, yVdd], [railEnd, yVdd]] });
-  wires.push({ node: GND, points: [[x0 - 1, yGnd], [railEnd, yGnd]] });
+  if (pullDown) wires.push({ node: GND, points: [[x0 - 1, yGnd], [railEnd, yGnd]] });
   wires.push({ node: OUT, points: [[x0 + LEAD_DX, yOut], [W, yOut]] });
 
   // Gate inputs: pin → track → each gate it drives.
@@ -200,9 +206,7 @@ export function cmosLayout(def: ComponentDef): CmosLayout {
   });
 
   // Rail names sit just left of the rails' ends.
-  const labels = [
-    { text: 'VDD = 1', at: [x0 - 1.3, yVdd] as Point },
-    { text: 'GND = 0', at: [x0 - 1.3, yGnd] as Point },
-  ];
+  const labels = [{ text: 'VDD = 1', at: [x0 - 1.3, yVdd] as Point }];
+  if (pullDown) labels.push({ text: 'GND = 0', at: [x0 - 1.3, yGnd] as Point });
   return { width: W, height: H, fets, wires, cap, labels };
 }

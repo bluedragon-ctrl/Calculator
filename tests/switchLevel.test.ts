@@ -54,3 +54,19 @@ describe('switch level', () => {
     expect(count('XOR2')).toBe(16);
   });
 });
+
+describe('single-transistor bench parts', () => {
+  it('one transistor between power and the lamp; the lamp wire floats when it is off', () => {
+    for (const [name, type, onAt] of [['NMOS', 'n', 1], ['PMOS', 'p', 0]] as const) {
+      const def = library.get(name);
+      const net = cmosNetlist(def.cmos!);
+      expect(net.transistors.map((t) => `${t.type}:${t.input}:${t.a}-${t.b}`)).toEqual([`${type}:g:VDD-OUT`]);
+      for (const g of [0, 1] as const) {
+        const r = evaluateSwitches(net, { g });
+        expect(r.out).toBe(g === onAt ? 1 : 'float');
+        // The behaviour (lamp lit) agrees: 1 when conducting, else no current (0).
+        expect(def.behavior!.eval([g], 0)[0]).toBe(g === onAt ? 1 : 0);
+      }
+    }
+  });
+});

@@ -92,7 +92,8 @@ function validate(def: ComponentDef, lib: Library): void {
     const outs = outputPins(def);
     if (outs.length !== 1) fail('a CMOS gate has exactly one output');
     const ins = new Set(inputPins(def));
-    for (const i of [...cmosInputs(def.cmos.pullUp), ...cmosInputs(def.cmos.pullDown)]) {
+    const { pullUp, pullDown } = def.cmos;
+    for (const i of [...cmosInputs(pullUp), ...(pullDown ? cmosInputs(pullDown) : [])]) {
       if (!ins.has(i)) fail(`CMOS network uses unknown input "${i}"`);
     }
   }

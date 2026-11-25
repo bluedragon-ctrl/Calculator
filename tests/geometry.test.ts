@@ -58,8 +58,8 @@ describe('CMOS layout', () => {
       const pts = [
         ...layout.wires.flatMap((w) => w.points),
         ...layout.fets.flatMap((f) => [...f.shapes.flat(), ...f.switchOpen, [f.tagAt[0] + 0.5, f.tagAt[1]] as Point]),
-        ...layout.cap.plateTop, ...layout.cap.plateBottom,
-        [layout.cap.gauge[2], layout.cap.gauge[3]] as Point,
+        ...layout.cap!.plateTop, ...layout.cap!.plateBottom,
+        [layout.cap!.gauge[2], layout.cap!.gauge[3]] as Point,
       ];
       for (const [x, y] of pts) {
         expect(x).toBeGreaterThanOrEqual(0);
@@ -68,7 +68,7 @@ describe('CMOS layout', () => {
         expect(y).toBeLessThanOrEqual(layout.height);
       }
       // The capacitor sits right of every pull-down transistor's switch icon and tag.
-      for (const f of layout.fets.filter((f) => f.type === 'n')) expect(f.tagAt[0] + 0.6).toBeLessThan(layout.cap.x - 0.6);
+      for (const f of layout.fets.filter((f) => f.type === 'n')) expect(f.tagAt[0] + 0.6).toBeLessThan(layout.cap!.x - 0.6);
       // Leads join each channel from the side: every transistor has one lead above and one below.
       for (const f of layout.fets) {
         const own = layout.wires.filter((w) => w.fet === f.id);
