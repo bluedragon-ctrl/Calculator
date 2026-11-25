@@ -5,6 +5,8 @@ import { tooltipText, wireBlurb } from '../src/content/tooltips';
 import { library } from '../src/circuits/library';
 import { calculatorPanel, calculatorTips, hudText } from '../src/content/calculator';
 import { clockText } from '../src/content/messages';
+import { dieText, lcdText, siliconText } from '../src/content/silicon';
+import { propText } from '../src/content/device';
 
 const words = (s: string) => s.trim().split(/\s+/).length;
 
@@ -23,6 +25,18 @@ describe('student-facing text', () => {
   it('keeps tooltips short', () => {
     for (const s of Object.values(tooltipText)) expect(words(s)).toBeLessThanOrEqual(40);
     for (const n of library.names()) expect(words(library.get(n).blurb), n).toBeLessThanOrEqual(40);
+  });
+  it('keeps the real-chip texts short (Phase 4c)', () => {
+    const all: string[] = [];
+    const walk = (o: unknown) => {
+      if (typeof o === 'string') all.push(o);
+      else if (typeof o === 'function') all.push(String((o as (s: string) => string)('x')));
+      else if (o && typeof o === 'object') Object.values(o).forEach(walk);
+    };
+    walk([dieText, lcdText, siliconText, propText]);
+    for (const s of all) expect(words(s), s).toBeLessThanOrEqual(40);
+    expect(siliconText.schematic).toBe('Diagram');
+    expect(siliconText.silicon).toBe('Real chip');
   });
   it('every bench uses a component in the library, and presets name real buses or pins', () => {
     for (const b of benches) {

@@ -3,14 +3,17 @@
 // inside" lifts the cover to show the circuit board with real-part props; "Into the chip"
 // dives into the chip package, then the chip world takes over.
 import {
-  AmbientLight, BoxGeometry, CircleGeometry, Color, CylinderGeometry, DirectionalLight, Group,
+  AmbientLight, BoxGeometry, CircleGeometry, CylinderGeometry, DirectionalLight, Group,
   HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, PlaneGeometry,
-  Raycaster, RingGeometry, Scene, Vector2, Vector3, type Object3D, type WebGLRenderer,
+  Raycaster, RingGeometry, Scene, Vector2, Vector3, BufferGeometry, Float32BufferAttribute, LineBasicMaterial,
+  LineSegments, type Object3D, type Texture, type WebGLRenderer,
 } from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { Text } from 'troika-three-text';
-import fontUrl from '../assets/fonts/inter-latin-600-normal.woff?url';
+import type { Text } from 'troika-three-text';
+import { text3d } from './text3d';
 import { KEY_LABELS } from '../circuits/machine';
+import type { DieLayout } from '../circuits/dieLayout';
+import { LcdCutaway } from './lcdCutaway';
 import { BACKGROUND, WIRE_ON } from './palette';
 import { segmentRects, SEGMENTS } from './segments';
 
@@ -26,6 +29,23 @@ const KEY_PITCH_Y = 1.05;
 const KEYS_TOP = -0.55;
 const BOARD_Z = 0.32;
 const COVER_Z = 0.62;
+/** The chip package's centre on the board. */
+const CHIP_X = -0.5;
+const CHIP_Y = 0.9;
+/** Width of the die inside the package. */
+const DIE_W = 1.0;
+/** The dive: approach, lid off, then down onto the die (seconds in all). */
+const DIVE_SEC = 2.6;
+/** Where the LCD close-up floats (beside the calculator), and how far the camera moves to show it. */
+const LCD_X = 5.6;
+const LCD_Y = 3.4;
+const LCD_SHIFT = 2.8;
+
+/** The die art for the dive (DESIGN.md §9, Phase 4c): the chip's floorplan baked into a texture. */
+export interface DieArt {
+  texture: Texture;
+  layout: DieLayout;
+}
 
 export type DevicePhase = 'closed' | 'opening' | 'open' | 'closing' | 'diving';
 
@@ -33,19 +53,10 @@ export type DevicePhase = 'closed' | 'opening' | 'open' | 'closing' | 'diving';
 export type DeviceHit = { kind: 'key'; code: number } | { kind: 'prop'; id: string };
 
 const ease = (t: number) => t * t * (3 - 2 * t);
+/** Progress of one step of the dive, eased: 0 before `from`, 1 after `from + len`. */
+const part = (d: number, from: number, len: number) => ease(Math.min(1, Math.max(0, (d - from) / len)));
 
-function text(content: string, size: number, color: string | Color, x: number, y: number, z: number): Text {
-  const t = new Text();
-  t.text = content;
-  t.font = fontUrl;
-  t.fontSize = size;
-  t.color = color;
-  t.anchorX = 'center';
-  t.anchorY = 'middle';
-  t.position.set(x, y, z);
-  t.sync();
-  return t;
-}
+const text = text3d;
 
 export class DeviceWorld {
   readonly scene = new Scene();
@@ -69,8 +80,18 @@ export class DeviceWorld {
   onDived: (() => void) | null = null;
   /** Instant camera moves and cover (prefers-reduced-motion). */
   instant = false;
+  /** The package's lid (comes off during the dive) and what it covers. */
+  private readonly lid = new Group();
+  private readonly lidMats: MeshStandardMaterial[] = [];
+  private readonly inside = new Group();
+  private dieAspect = 3;
+  private lcd: LcdCutaway | null = null;
+  private lcdLink: LineSegments | null = null;
+  private lcdWanted = false;
+  /** Camera shift towards the LCD close-up: 0 … 1. */
+  private lcdShift = 0;
 
-  constructor() {
+  constructor(dieArt?: DieArt) {
     this.scene.background = BACKGROUND;
     this.scene.add(new HemisphereLight('#b9c8ff', '#0b1020', 1.1), new AmbientLight('#ffffff', 0.25));
     const sun = new DirectionalLight('#ffffff', 1.6);
@@ -82,6 +103,7 @@ export class DeviceWorld {
     body.position.z = -0.05;
     this.scene.add(body);
     this.buildBoard();
+    this.buildPackageInside(dieArt);
 
     // --- Cover (front shell) with a window over the display and holes for the keys ---
     const shell = new MeshStandardMaterial({ color: '#2a3247', roughness: 0.55, metalness: 0.1 });
@@ -168,24 +190,33 @@ export class DeviceWorld {
       }
     });
 
-    // Chip package (QFP) with pins, and its label.
-    const chip = new Mesh(new BoxGeometry(1.5, 1.5, 0.18), new MeshStandardMaterial({ color: '#111318', roughness: 0.5 }));
-    chip.position.set(-0.5, 0.9, BOARD_Z + 0.09);
+    // Chip package (QFP) with pins: a base, and a lid with the label that comes off in the dive.
+    const pkgMat = new MeshStandardMaterial({ color: '#111318', roughness: 0.5 });
+    const chip = new Mesh(new BoxGeometry(1.5, 1.5, 0.1), pkgMat);
+    chip.position.set(CHIP_X, CHIP_Y, BOARD_Z + 0.05);
     prop(chip, 'chip');
+    const lidMat = new MeshStandardMaterial({ color: '#111318', roughness: 0.5, transparent: true });
+    this.lidMats.push(lidMat);
+    const lidBox = new Mesh(new BoxGeometry(1.5, 1.5, 0.08), lidMat);
+    lidBox.userData = { prop: 'chip' };
+    this.pickables.push(lidBox);
+    this.lid.add(lidBox);
+    this.lid.position.set(CHIP_X, CHIP_Y, BOARD_Z + 0.14);
+    this.scene.add(this.lid);
     const pinGeom = new BoxGeometry(0.06, 0.2, 0.03);
     const pinMat = new MeshStandardMaterial({ color: '#b8bec9', metalness: 0.9, roughness: 0.3 });
     for (let i = 0; i < 8; i++) {
       const t = -0.6 + (i * 1.2) / 7;
-      for (const [x, y, rot] of [[-0.5 + t, 0.9 + 0.85, 0], [-0.5 + t, 0.9 - 0.85, 0], [-0.5 - 0.85, 0.9 + t, 1], [-0.5 + 0.85, 0.9 + t, 1]] as const) {
+      for (const [x, y, rot] of [[CHIP_X + t, CHIP_Y + 0.85, 0], [CHIP_X + t, CHIP_Y - 0.85, 0], [CHIP_X - 0.85, CHIP_Y + t, 1], [CHIP_X + 0.85, CHIP_Y + t, 1]] as const) {
         const p = new Mesh(pinGeom, pinMat);
         p.position.set(x, y, BOARD_Z + 0.02);
         p.rotation.z = rot ? Math.PI / 2 : 0;
         this.scene.add(p);
       }
     }
-    const chipLabel = text('CALC-8\n~7000 transistors', 0.13, '#9aa3b5', -0.5, 0.9, BOARD_Z + 0.19);
+    const chipLabel = text('CALC-8\n~7000 transistors', 0.13, '#9aa3b5', 0, 0, 0.045);
     chipLabel.textAlign = 'center';
-    this.scene.add(chipLabel);
+    this.lid.add(chipLabel);
     this.texts.push(chipLabel);
 
     // Decoupling capacitor right next to the chip (a small ceramic part with two pads).
@@ -250,26 +281,116 @@ export class DeviceWorld {
     prop(bus, 'trace');
   }
 
+  /**
+   * Under the lid: the cavity with the die (the chip's floorplan, same as the chip world's die
+   * view) and gold bond wires from its pads to the lead fingers at the cavity's edge.
+   */
+  private buildPackageInside(art?: DieArt): void {
+    const z = BOARD_Z + 0.1;
+    const cavity = new Mesh(new PlaneGeometry(1.36, 1.36), new MeshStandardMaterial({ color: '#2b2a26', roughness: 0.7 }));
+    cavity.position.set(CHIP_X, CHIP_Y, z + 0.001);
+    this.inside.add(cavity);
+    if (!art) {
+      this.scene.add(this.inside);
+      return;
+    }
+    const L = art.layout;
+    const [dx0, dy0, dx1, dy1] = L.die;
+    this.dieAspect = (dx1 - dx0) / (dy1 - dy0);
+    const k = DIE_W / (dx1 - dx0);
+    const dieH = (dy1 - dy0) * k;
+    // Die (y down in layout units → y up on the board).
+    const die = new Mesh(new PlaneGeometry(DIE_W, dieH), new MeshBasicMaterial({ map: art.texture }));
+    die.position.set(CHIP_X, CHIP_Y, z + 0.004);
+    die.userData = { prop: 'die' };
+    this.pickables.push(die);
+    this.inside.add(die);
+    const toBoard = ([x, y]: readonly [number, number]) =>
+      [CHIP_X + (x - (dx0 + dx1) / 2) * k, CHIP_Y - (y - (dy0 + dy1) / 2) * k] as const;
+    // Lead fingers on the cavity's left and right edges, one per bond wire, in pad order.
+    const pts: number[] = [];
+    const fingers = new Group();
+    const fingerMat = new MeshStandardMaterial({ color: '#c89b3c', metalness: 0.8, roughness: 0.35 });
+    const fingerGeom = new PlaneGeometry(0.06, 0.018);
+    for (const side of [-1, 1]) {
+      const pads = L.pads.filter((p) => Math.sign(p.bond[1][0] - (dx0 + dx1) / 2) === side).sort((a, b) => a.bond[0][1] - b.bond[0][1]);
+      pads.forEach((p, i) => {
+        const [px, py] = toBoard(p.bond[0]);
+        const fx = CHIP_X + side * 0.62;
+        const fy = CHIP_Y + 0.6 - (1.2 * (i + 0.5)) / pads.length;
+        const f = new Mesh(fingerGeom, fingerMat);
+        f.position.set(fx + side * 0.03, fy, z + 0.003);
+        fingers.add(f);
+        // A gentle arc: up from the pad, over, and down onto the finger.
+        const mx = (px + fx) / 2;
+        const my = (py + fy) / 2;
+        pts.push(px, py, z + 0.006, mx, my, z + 0.05, mx, my, z + 0.05, fx, fy, z + 0.004);
+      });
+    }
+    const geom = new BufferGeometry();
+    geom.setAttribute('position', new Float32BufferAttribute(pts, 3));
+    this.inside.add(fingers, new LineSegments(geom, new LineBasicMaterial({ color: '#f2c75c' })));
+    this.scene.add(this.inside);
+  }
+
+  /** Show or hide the LCD close-up beside the calculator (opt-in). */
+  setLcdCutaway(on: boolean): void {
+    this.lcdWanted = on;
+    if (on && !this.lcd) {
+      this.lcd = new LcdCutaway();
+      this.lcd.group.position.set(LCD_X, LCD_Y, 0.4);
+      this.scene.add(this.lcd.group);
+      this.pickables.push(...this.lcd.pickables);
+      // A thin line from the real segment (ones digit, top) to the close-up.
+      const seg = this.segs.find((x) => x.pin === 'oa')!.mesh.position;
+      const geom = new BufferGeometry();
+      geom.setAttribute('position', new Float32BufferAttribute([seg.x, seg.y, seg.z + 0.01, LCD_X - 1.4, LCD_Y + 0.05, 0.4], 3));
+      this.lcdLink = new LineSegments(geom, new LineBasicMaterial({ color: '#5fd7ff' }));
+      this.scene.add(this.lcdLink);
+    }
+    if (this.instant) this.lcdShift = on ? 1 : 0;
+  }
+
+  get lcdCutaway(): boolean {
+    return this.lcdWanted;
+  }
+
   setSize(width: number, height: number): void {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.setView(this.open);
   }
 
-  /** Camera for a cover position (0 closed … 1 open) and dive progress. */
+  /** Camera for a cover position (0 closed … 1 open), the dive and the LCD close-up. */
   private setView(open: number): void {
-    // Fit the calculator's height (about 11 units) whatever the aspect.
-    const fitH = 11.5 / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
-    const fitW = 7.5 / (2 * Math.tan((this.camera.fov * Math.PI) / 360) * this.camera.aspect);
+    const tanHalf = Math.tan((this.camera.fov * Math.PI) / 360);
+    // Fit the calculator's height (about 11 units) whatever the aspect, and its width (wider
+    // with the LCD close-up beside it).
+    const shift = ease(this.lcdShift);
+    const fitH = 11.5 / (2 * tanHalf);
+    const fitW = (7.5 + 6 * shift) / (2 * tanHalf * this.camera.aspect);
     const dist = Math.max(fitH, fitW);
-    const from = new Vector3(0.4 - 0.4 * open, -2.6 + 1.6 * open, dist);
-    const target = new Vector3(0, -0.2 + 0.4 * open, 0);
-    const d = ease(this.dive);
-    const chipPos = new Vector3(-0.5, 0.9, BOARD_Z + 0.2);
-    const cam = from.clone().lerp(chipPos.clone().add(new Vector3(0, 0, 0.6)), d);
-    const look = target.clone().lerp(chipPos, d);
+    const from = new Vector3(0.4 - 0.4 * open + LCD_SHIFT * shift, -2.6 + 1.6 * open, dist);
+    const target = new Vector3(LCD_SHIFT * shift, -0.2 + 0.4 * open, 0);
+    // The dive: over the package, the lid comes off, then down until the die fills the view.
+    const d = this.dive;
+    const chipPos = new Vector3(CHIP_X, CHIP_Y, BOARD_Z + 0.1);
+    const dieH = DIE_W / this.dieAspect;
+    const close = Math.max((DIE_W * 1.1) / (2 * tanHalf * this.camera.aspect), (dieH * 1.3) / (2 * tanHalf));
+    const above = chipPos.clone().add(new Vector3(0, -0.35, 2.4));
+    const onDie = chipPos.clone().add(new Vector3(0, 0, close));
+    const a = part(d, 0, 0.35);
+    const c = part(d, 0.6, 0.4);
+    const cam = from.clone().lerp(above, a).lerp(onDie, c);
+    const look = target.clone().lerp(chipPos, a);
     this.camera.position.copy(cam);
     this.camera.lookAt(look);
+    // Lid: lifts and slides away, then fades.
+    const l = part(d, 0.3, 0.35);
+    this.lid.position.set(CHIP_X + 1.6 * l, CHIP_Y + 0.6 * l, BOARD_Z + 0.14 + 1.2 * l);
+    this.lid.rotation.y = 0.9 * l;
+    for (const m of this.lidMats) m.opacity = 1 - part(d, 0.5, 0.2);
+    this.lid.visible = d < 0.7;
   }
 
   /** Start lifting the cover (or close it again). */
@@ -313,11 +434,19 @@ export class DeviceWorld {
       this.open = Math.max(0, this.open - speed);
       if (this.open <= 0) this.phase = 'closed';
     } else if (this.phase === 'diving') {
-      this.dive = Math.min(1, this.dive + dtSec / 1.2);
+      this.dive = Math.min(1, this.dive + dtSec / DIVE_SEC);
       if (this.dive >= 1) {
         this.phase = 'open';
         this.onDived?.();
       }
+    }
+    const lcdTarget = this.lcdWanted ? 1 : 0;
+    this.lcdShift = this.instant ? lcdTarget : this.lcdShift < lcdTarget ? Math.min(1, this.lcdShift + dtSec / 0.8) : Math.max(0, this.lcdShift - dtSec / 0.8);
+    if (this.lcd) {
+      const shown = this.lcdShift > 0.02 || this.lcdWanted;
+      this.lcd.group.visible = shown;
+      this.lcdLink!.visible = shown && this.lcdShift > 0.9;
+      this.lcd.update(dtSec, segment('oa'));
     }
     this.applyCover();
     this.setView(this.open);
@@ -348,7 +477,12 @@ export class DeviceWorld {
         if (!this.cover.visible) continue;
         return { kind: 'key', code: o.userData.key as number };
       }
-      // Board parts are hidden by the cover while it is closed (except the display behind its window).
+      // Board parts are hidden by the cover while it is closed (except the display behind its
+      // window, and the LCD close-up beside the calculator).
+      if (o.userData.prop === 'lcd') {
+        if (!this.lcd?.group.visible) continue;
+        return { kind: 'prop', id: 'lcd' };
+      }
       if (this.open < 0.5 && o.userData.prop !== 'display') return null;
       return { kind: 'prop', id: o.userData.prop as string };
     }

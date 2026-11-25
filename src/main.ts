@@ -10,7 +10,10 @@ import { clockText, exploreText, noWebGL } from './content/messages';
 import { tooltipText } from './content/tooltips';
 import { Bench } from './render/bench';
 import { ChipView } from './render/chip';
-import { DeviceWorld } from './render/device';
+import { DeviceWorld, type DieArt } from './render/device';
+import { dieLayout } from './circuits/dieLayout';
+import { paintDie, rasterSize, toTexture } from './render/dieArt';
+import { Raster } from './render/raster';
 import { FADE_SEC, fitView, type Bounds } from './render/lod';
 import { Stage, hasWebGL2 } from './render/stage';
 import type { ComponentView } from './render/views';
@@ -31,7 +34,7 @@ import { CALCULATOR_SPEED, isInstant, speedLabel, speedToMs, speedToRate } from 
 import { ClockRunner } from './ui/clock';
 import { ClockBar } from './ui/clockBar';
 import { ViewToggle } from './ui/viewToggle';
-import { crossText, siliconText } from './content/silicon';
+import { crossText, lcdText, siliconText } from './content/silicon';
 import type { SiliconMode } from './render/views';
 
 function safeLocalStorage(): Storage | undefined {
@@ -60,6 +63,15 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 /** What the chip world shows: the whole calculator or one lab bench. */
 type Scene = { kind: 'chip'; chip: ChipView } | { kind: 'bench'; bench: Bench; text: BenchText };
 
+/** The chip's die baked into one texture, for the dive into the package (Phase 4c). */
+function dieArt(): DieArt {
+  const layout = dieLayout(library.get('Calculator'), library);
+  const [w, h] = rasterSize(layout.die, 4);
+  const r = new Raster(w, h, layout.die);
+  paintDie(r, layout, library, true);
+  return { texture: toTexture(r), layout };
+}
+
 function start(): void {
   const view = $('view');
   if (!hasWebGL2()) {
@@ -76,7 +88,7 @@ function start(): void {
   let scene: Scene | null = null;
   /** The 3D device world is showing (instead of the chip world). */
   let onDevice = true;
-  const device = new DeviceWorld();
+  const device = new DeviceWorld(dieArt());
   stage.onResize((w, h) => device.setSize(w, h));
   let busPanel: BusPanel | null = null;
   const host = () => (scene?.kind === 'chip' ? scene.chip : scene?.bench ?? null);
@@ -131,7 +143,7 @@ function start(): void {
     }
   };
   const hud = new Hud(view, pressKey);
-  /** Schematic | Silicon (DESIGN.md §6.2a): one mode for every view, kept while switching scenes. */
+  /** Diagram | Real chip (DESIGN.md §6.2a): one mode for every view, kept while switching scenes. */
   const silicon: SiliconMode = { on: false };
   const viewToggle = new ViewToggle(view, silicon, () => refreshHover());
 
@@ -186,7 +198,15 @@ function start(): void {
   chipBtn.type = 'button';
   chipBtn.className = 'primary';
   chipBtn.textContent = deviceText.intoChip;
-  deviceButtons.append(coverBtn, chipBtn);
+  // LCD close-up (opt-in): one display segment taken apart beside the calculator.
+  const lcdBtn = document.createElement('button');
+  lcdBtn.type = 'button';
+  lcdBtn.title = lcdText.buttonTitle;
+  lcdBtn.addEventListener('click', () => {
+    device.setLcdCutaway(!device.lcdCutaway);
+    refreshDeviceUi();
+  });
+  deviceButtons.append(coverBtn, chipBtn, lcdBtn);
   deviceUi.append(prompt, deviceButtons);
   view.append(deviceUi);
   const fade = document.createElement('div');
@@ -198,6 +218,8 @@ function start(): void {
     coverBtn.textContent = open ? deviceText.closeCover : deviceText.lookInside;
     coverBtn.classList.toggle('primary', !open);
     chipBtn.hidden = !open;
+    lcdBtn.textContent = device.lcdCutaway ? lcdText.hide : lcdText.show;
+    lcdBtn.setAttribute('aria-pressed', String(device.lcdCutaway));
   };
   coverBtn.addEventListener('click', () => {
     const open = device.phase === 'open' || device.phase === 'opening';
@@ -229,10 +251,11 @@ function start(): void {
     fade.classList.add('on');
     window.setTimeout(() => {
       showCalculator();
-      const home = scene?.kind === 'chip' ? scene.chip.homeView(aspect()) : null;
-      if (home) {
-        nav.flyTo({ ...home, height: home.height * 0.12 }, 0);
-        nav.flyTo(home, 1.4);
+      if (scene?.kind === 'chip') {
+        // The dive ended on the die, so start with the chip filling the screen, then pull back.
+        const chip = scene.chip;
+        nav.flyTo(fitView(chip.view.worldBounds, aspect(), 1.02), 0);
+        nav.flyTo(chip.homeView(aspect()), 1.2);
       }
       fade.classList.remove('on');
     }, reducedMotion.matches ? 0 : 360);
@@ -366,8 +389,8 @@ function start(): void {
     const last = chain.at(-1);
     if (last?.isTransistorView) crumbs.push({ text: last.isSiliconView ? siliconText.crumb : tooltipText.transistors });
     breadcrumb.set(crumbs);
-    // Only where it changes something: an opened gate on screen (closed gate boxes keep symbols).
-    viewToggle.visible = !!host()?.view.showsTransistorsIn(stage.visibleRect);
+    // Inside the chip every level changes with it (DESIGN.md §9, Phase 4c): die, cells, layouts.
+    viewToggle.visible = !!scene;
   };
 
   // --- Pointer: click switches/keys, hover tooltips, double-click to fly ---
@@ -418,6 +441,9 @@ function start(): void {
     if (!hit) tooltip.hide();
     else if (hit.kind === 'key') {
       tooltip.show({ title: calculatorTips.keyTitle(KEY_LABELS[hit.code]), body: propText.key.body, values: [] }, px, py);
+    } else if (hit.id === 'lcd') {
+      const on = machine.sim.output('oa') === 1;
+      tooltip.show({ title: lcdText.tipTitle, body: `${lcdText.tip} ${lcdText.tipNote}`, values: [on ? lcdText.stateOn : lcdText.stateOff], hint: lcdText.glowNote }, px, py);
     } else {
       const t = propText[hit.id];
       tooltip.show({ title: t.title, body: t.body, values: [] }, px, py);

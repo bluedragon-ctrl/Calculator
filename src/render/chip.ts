@@ -10,7 +10,8 @@ import { CLOCK_PIN } from '../sim/simulator';
 import type { Bit, ComponentDef, Point } from '../sim/types';
 import { blockCaptions } from '../content/calculator';
 import { Label } from './labels';
-import { EXPAND_PX, fitView, FADE_SEC, screenSize, type Bounds } from './lod';
+import { EXPAND_PX, fitView, FADE_SEC, screenSize, stepAlpha, type Bounds } from './lod';
+import { DieView } from './die';
 import { BLOOM_BOOST, LABEL, LABEL_DIM, WIRE_ON } from './palette';
 import { Playback } from './playback';
 import { segmentRects, SEGMENTS } from './segments';
@@ -36,7 +37,9 @@ export type ChipHit =
   | Hit
   | { kind: 'key'; code: number; value: Bit; queued: boolean }
   | { kind: 'clock'; value: Bit }
-  | { kind: 'display' };
+  | { kind: 'display' }
+  | { kind: 'pad'; pin: string; value: Bit }
+  | { kind: 'die'; view: ComponentView };
 
 export class ChipView {
   readonly object = new Group();
@@ -61,8 +64,16 @@ export class ChipView {
   private readonly displayRect: Bounds;
   private readonly captions: { label: Label; bounds: Bounds }[] = [];
   private readonly bounds: Bounds;
+  private readonly left: number;
+  private readonly top: number;
+  /** "Real chip" at chip level (DESIGN.md §6.2a, Phase 4c): built the first time it is needed. */
+  private die: DieView | null = null;
+  /** Fade of the toggle itself (0 = diagram, 1 = real chip). */
+  private realAlpha = 0;
+  /** How much of the die shows: the toggle's fade, less as soon as a block opens. */
+  private dieAlpha = 0;
 
-  constructor(readonly machine: Machine, lib: Library, private readonly mats: WireMaterials, silicon: SiliconMode = { on: false }) {
+  constructor(readonly machine: Machine, private readonly lib: Library, private readonly mats: WireMaterials, private readonly silicon: SiliconMode = { on: false }) {
     this.def = lib.get('Calculator');
     const { circuit, sim } = machine;
     this.playback = new Playback(Array.from({ length: circuit.netCount }, (_, i) => sim.get(i)));
@@ -72,6 +83,8 @@ export class ChipView {
     const left = (-w * UNIT) / 2;
     const top = (h * UNIT) / 2;
     const right = -left;
+    this.left = left;
+    this.top = top;
     this.view = new ComponentView(this.ctx, this.def, '', left, top, UNIT);
     this.view.group.position.set(left, top, 0);
     this.view.group.scale.setScalar(UNIT);
@@ -188,7 +201,9 @@ export class ChipView {
       this.captions.push({ label, bounds: [x0, y0 - cdef.size[1] * UNIT, x0 + bw, y0] });
     }
 
-    this.bounds = [colX - KEY_W, Math.min(dBot, this.clock.y - 2, -top), dx + dW + 1, Math.max(dTop + 1.5, firstY + 2.5, top)];
+    // Room below the chip for the die view's note.
+    this.bounds = [colX - KEY_W, Math.min(dBot, this.clock.y - 2, -top - 2), dx + dW + 1, Math.max(dTop + 1.5, firstY + 2.5, top)];
+    this.realAlpha = silicon.on ? 1 : 0;
     this.refresh();
   }
 
@@ -246,16 +261,42 @@ export class ChipView {
     return this.playback.value(this.machine.circuit.outputs[pin]);
   }
 
+  /** The die view is showing (more than half faded in). */
+  get showsDie(): boolean {
+    return this.dieAlpha > 0.5;
+  }
+
+  /** The die view, once built (for tests). */
+  get dieView(): DieView | null {
+    return this.die;
+  }
+
   update(dtMs: number, view: ViewRect): void {
+    const dt = dtMs / 1000;
     this.playback.update(dtMs);
-    this.view.update(view, dtMs / 1000);
+    // Real chip at chip level: the die stands in for the block diagram until a block opens.
+    this.realAlpha = stepAlpha(this.realAlpha, this.silicon.on ? 1 : 0, dt, this.ctx.fadeSec);
+    if (this.realAlpha > 0 && !this.die) this.buildDie();
+    this.dieAlpha = this.realAlpha * (1 - this.view.childOpenness);
+    this.view.insideFade = 1 - this.dieAlpha;
+    this.view.update(view, dt);
+    this.die?.update(dt, this.dieAlpha, view.pxPerWorld * UNIT);
     this.nets.update();
     this.refresh();
-    // Captions fade out once their block opens (it then shows its own title).
+    // Captions fade out once their block opens (it then shows its own title), and give way to
+    // the die's own labels.
     for (const c of this.captions) {
       const open = screenSize(c.bounds, view.pxPerWorld) > EXPAND_PX;
-      c.label.fit(view.pxPerWorld, open ? 0 : 1);
+      c.label.fit(view.pxPerWorld, open ? 0 : 1 - this.dieAlpha);
     }
+  }
+
+  private buildDie(): void {
+    const die = new DieView(this.def, this.lib, this.machine.circuit, this.playback, this.nets, this.mats, UNIT);
+    die.group.position.set(this.left, this.top, 0.5);
+    die.group.scale.setScalar(UNIT);
+    this.object.add(die.group);
+    this.die = die;
   }
 
   refresh(): void {
@@ -312,6 +353,14 @@ export class ChipView {
     if (this.clockAt(x, y)) return { kind: 'clock', value: this.clockValue };
     const [l, b, r, t] = this.displayRect;
     if (x >= l && x <= r && y >= b && y <= t) return { kind: 'display' };
+    if (this.die && this.showsDie) {
+      const h = this.die.hit((x - this.left) / UNIT, (this.top - y) / UNIT, tol / UNIT);
+      if (h?.kind === 'block') {
+        const v = this.view.child(h.part);
+        if (v) return { kind: 'component', view: v };
+      } else if (h?.kind === 'pad') return { kind: 'pad', pin: h.pin, value: this.playback.value(h.net) };
+      else if (h) return { kind: 'die', view: this.view };
+    }
     const inside = this.view.hit(x, y, tol);
     if (inside) return inside;
     for (const w of this.extraWires) {
@@ -331,6 +380,7 @@ export class ChipView {
   }
 
   dispose(): void {
+    this.die?.dispose();
     this.view.dispose();
     for (const w of this.extraWires) {
       this.nets.remove(w.net, w.wire);

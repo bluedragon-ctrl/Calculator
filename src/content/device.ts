@@ -48,6 +48,10 @@ export const propText: Record<string, PropText> = {
     title: 'Coin-cell battery',
     body: 'Gives the power: 1 means "near the battery voltage", 0 means "near 0 volts". A prop: the simulation only knows 0 and 1.',
   },
+  die: {
+    title: 'The silicon die',
+    body: 'The chip itself: a thin slice of silicon smaller than your fingernail. Gold wires join its edge to the pins of the package.',
+  },
   display: {
     title: 'Display',
     body: 'Seven-segment digits: sign, hundreds, tens and ones. The chip switches each segment on or off through its own wire.',

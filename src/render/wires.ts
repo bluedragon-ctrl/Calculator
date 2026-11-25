@@ -11,7 +11,7 @@ import type { Quality } from '../ui/quality';
 import { fadeObject, type AlphaFn } from './fade';
 import type { Transition } from './playback';
 import {
-  BLOOM_BOOST, CAP_COLOR, CHANNEL_ON, CHARGE, FRAME, GLOW_OPACITY, GLOW_WIDTH, GND_COLOR, OUTLINE, OUTLINE_WIDTH,
+  BLOOM_BOOST, CAP_COLOR, DIE_ACTIVE, CHANNEL_ON, CHARGE, FRAME, GLOW_OPACITY, GLOW_WIDTH, GND_COLOR, OUTLINE, OUTLINE_WIDTH,
   PATH_GND, PATH_VDD, PATH_WIDTH, SPARK_PX, VDD_COLOR, WIRE_OFF, WIRE_ON, WIRE_WIDTH_OFF,
   WIRE_WIDTH_ON,
 } from './palette';
@@ -36,6 +36,8 @@ export class WireMaterials {
   readonly gnd = new LineMaterial({ color: GND_COLOR, linewidth: 3.5 });
   readonly outline = new LineMaterial({ color: OUTLINE, linewidth: OUTLINE_WIDTH });
   readonly frame = new LineMaterial({ color: FRAME, linewidth: 1.5 });
+  /** Outline of a die block that is switching (Phase 4c): thick and bright, but ≤ 1.0 (no bloom). */
+  readonly active = new LineMaterial({ color: DIE_ACTIVE.clone().multiplyScalar(0.9), linewidth: 3.5 });
   readonly channelOff = new LineMaterial({ color: WIRE_OFF, linewidth: 2, dashed: true, dashSize: 0.18, gapSize: 0.14 });
   readonly channelOn = new LineMaterial({ color: CHANNEL_ON.clone().multiplyScalar(BLOOM_BOOST), linewidth: 6 });
   readonly pathVdd = pathMaterial(PATH_VDD);
@@ -61,7 +63,7 @@ export class WireMaterials {
   }
 
   private get lineMaterials(): LineMaterial[] {
-    return [this.off, this.on, this.glow, this.vdd, this.gnd, this.outline, this.frame,
+    return [this.off, this.on, this.glow, this.vdd, this.gnd, this.outline, this.frame, this.active,
       this.channelOff, this.channelOn, this.pathVdd, this.pathGnd, this.cap];
   }
 
