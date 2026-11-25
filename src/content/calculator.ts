@@ -9,6 +9,7 @@ export const calculatorPanel = {
     'Each block does one job. Scroll to zoom into any block, for example the ALU, then into its gates and transistors.',
     'The clock runs by itself while the chip is working. Pause it and press Space to go one tick at a time. Drag Speed to slow time down.',
     'Zoom into the control unit to see its rulebook. The rule that is working right now lights up.',
+    'Click "Real chip" at the top right to see how the chip is really built. Each block takes room in proportion to its transistors.',
   ],
   help: 'Keys: 0–9, + − = (or Enter), C (Esc or Delete), M (m), MR (r). Scroll to zoom, drag to move, double-click to fly to a part, Backspace zooms out, Home fits the view.',
   totalTransistors: (n: number) => `Transistors in this calculator: ${n.toLocaleString('en-US')}`,

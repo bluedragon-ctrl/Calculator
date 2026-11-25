@@ -9,7 +9,7 @@
 // Behavioural instances (a D flip-flop in a register, DESIGN.md §5.2) have no gates in the main
 // simulation. When one opens, its contents are a local structural copy with its own simulator
 // and playback, driven by the values that arrive at the instance's pins.
-import { Group, Mesh, PlaneGeometry, type Object3D } from 'three';
+import { Group, Mesh, MeshBasicMaterial, PlaneGeometry, type Object3D } from 'three';
 import type { Line2 } from 'three/addons/lines/Line2.js';
 import { cmosLayout, type CapLayout, type CmosWire, type FetLayout } from '../circuits/cmosLayout';
 import { innerScale, innerSize, minPinGap, netGeometry, pinPos } from '../circuits/geometry';
@@ -29,6 +29,7 @@ import { gateSymbol, symbolName } from './symbols';
 import { makeLine, Wire, type WireMaterials } from './wires';
 import { TableView } from './table';
 import { SiliconView } from './silicon';
+import { miniature } from './dieArt';
 import type { Layer } from '../circuits/siliconLayout';
 
 /** y-down layout coordinates → y-up local scene coordinates. */
@@ -36,6 +37,11 @@ const flip = (pts: readonly Point[]): Point[] => pts.map(([x, y]) => [x, -y] as 
 
 /** Below this effective opacity a layer is not drawn at all. */
 const HIDDEN = 0.004;
+
+/** One unit square for the cell miniatures (shared, never disposed). */
+const MINI_PLANE = new PlaneGeometry(1, 1);
+/** Opacity of a composite box's miniature, under its title. */
+const MINI_BEHIND_TEXT = 0.7;
 
 /** Keeps every drawn wire of a net in step with the playback. */
 export class NetWires {
@@ -103,7 +109,7 @@ export interface ViewContext {
   playback: Playback;
   /** Crossfade duration in seconds; 0 = instant (reduced motion). */
   fadeSec: number;
-  /** "Schematic | Silicon" toggle (DESIGN.md §6.2a), shared by every view of the scene. */
+  /** "Diagram | Real chip" toggle (DESIGN.md §6.2a), shared by every view of the scene. */
   silicon: SiliconMode;
 }
 
@@ -122,6 +128,7 @@ export interface ViewRect extends Rect {
 /** What is under the pointer. */
 export type Hit =
   | { kind: 'component'; view: ComponentView }
+  | { kind: 'cell'; view: ComponentView }
   | { kind: 'wire'; view: ComponentView; net: number; name: string }
   | { kind: 'fet'; view: ComponentView; fet: { type: 'p' | 'n'; input: string }; on: boolean; gate: Bit }
   | { kind: 'cap'; view: ComponentView; charge: number }
@@ -129,7 +136,7 @@ export type Hit =
 
 type WithoutView<T> = T extends unknown ? Omit<T, 'view'> : never;
 /** A hit inside a primitive's transistor view (the component view adds itself). */
-export type InnerHit = WithoutView<Exclude<Hit, { kind: 'component' }>>;
+export type InnerHit = WithoutView<Exclude<Hit, { kind: 'component' } | { kind: 'cell' }>>;
 
 /** A primitive's inside: the CMOS schematic or the silicon layout. */
 export interface TransistorView {
@@ -194,6 +201,15 @@ export class ComponentView {
   private boxAlpha = 1;
   private contentAlpha = 0;
   private readonly boxLabels: Label[] = [];
+  /** The gate symbol's outline and pin stubs (hidden while the cell miniature shows). */
+  private readonly symbolParts = new Group();
+  /** Real-chip mode on a closed gate: a static copy of its silicon cell (Phase 4c). */
+  private mini: { mesh: Mesh; mat: MeshBasicMaterial } | null | undefined = undefined;
+  /**
+   * Extra fade of everything inside the frame (wires, junctions, child parts), set by the scene.
+   * The chip's die view uses it to stand in for the block diagram (DESIGN.md §6.2a).
+   */
+  insideFade = 1;
   private readonly frameLabels: Label[] = [];
   private busLabel: Label | null = null;
   private readonly boxWires: [number, Wire][] = [];
@@ -203,6 +219,8 @@ export class ComponentView {
   private readonly innerWorld: number;
   private readonly boxFade: AlphaFn = () => this.boxAlpha;
   private readonly contentFade: AlphaFn = () => this.contentAlpha;
+  /** Opacity of what is inside the frame: the contents' fade times `insideFade`. */
+  private readonly innerFade: AlphaFn = () => this.contentAlpha * this.insideFade;
 
   /**
    * @param worldX/worldTop world position of the box's top-left corner
@@ -253,6 +271,27 @@ export class ComponentView {
     if (!this.group.visible || !intersects(this.worldBounds, view) || !this.isExpanded) return false;
     if (this.isTransistorView) return true;
     return this.children.some((c) => c.showsTransistorsIn(view));
+  }
+
+  /** How far the contents have faded in: 0 = closed box … 1 = open. */
+  get openness(): number {
+    return this.contents ? ease(this.alpha) : 0;
+  }
+
+  /** The most opened of the parts inside (0 when this instance is closed). */
+  get childOpenness(): number {
+    return this.contents ? this.children.reduce((m, c) => Math.max(m, c.openness), 0) : 0;
+  }
+
+  /** A part inside this (opened) instance, by its part name. */
+  child(name: string): ComponentView | undefined {
+    const path = pinKey(this.local ? '' : this.path, name);
+    return this.children.find((c) => c.path === path);
+  }
+
+  /** The cell miniature is showing instead of the gate symbol. */
+  get showsMiniature(): boolean {
+    return !!this.mini?.mesh.visible && this.box.visible;
   }
 
   /** True once the contents are (mostly) showing. */
@@ -369,17 +408,21 @@ export class ComponentView {
 
     const pxPerBox = this.worldScale * view.pxPerWorld;
     if (showBox) {
+      this.updateMiniature();
       for (const lb of this.boxLabels) lb.fit(pxPerBox, this.boxAlpha);
       this.updateBusLabel(pxPerBox);
     }
     if (!showInside) return;
     for (const lb of this.frameLabels) lb.fit(pxPerBox, this.contentAlpha);
     const pxPerInner = this.innerWorld * view.pxPerWorld;
-    for (const d of this.dots) d.visible = this.contentAlpha > 0.5;
+    const inner = this.innerFade();
+    // Fully covered (by the die view): nothing inside is drawn, but the parts still follow the zoom.
+    this.contents!.visible = inner > HIDDEN;
+    for (const d of this.dots) d.visible = inner > 0.5;
     if (this.cmos && this.cmos.silicon !== this.innerCtx.silicon.on) this.buildTransistorView();
     if (this.cmos) this.cmos.update(pxPerInner, this.contentAlpha);
     if (this.table) this.table.update(this.contentAlpha);
-    for (const c of this.children) c.update(view, dtSec, this.contentAlpha);
+    for (const c of this.children) c.update(view, dtSec, inner);
   }
 
   /** Snap back to the closed box (used when a parent closes or the instance leaves the screen). */
@@ -420,7 +463,35 @@ export class ComponentView {
       }
       if (best) return { kind: 'wire', view: this, net: best.net, name: best.name };
     }
-    return this.contains(x, y) ? { kind: 'component', view: this } : null;
+    if (!this.contains(x, y)) return null;
+    return this.showsMiniature && this.def.cmos ? { kind: 'cell', view: this } : { kind: 'component', view: this };
+  }
+
+  /**
+   * "Real chip" on a closed box (DESIGN.md §6.2a, Phase 4c): a gate shows its silicon cell instead
+   * of its symbol; any other box keeps its outline and title over its cells in rows.
+   */
+  private updateMiniature(): void {
+    const on = this.ctx.silicon.on;
+    if (on && this.mini === undefined) {
+      const m = miniature(this.def, this.ctx.lib);
+      if (m) {
+        const mat = new MeshBasicMaterial({ map: m.texture, transparent: true, depthWrite: false });
+        const mesh = new Mesh(MINI_PLANE, mat);
+        const [w, h] = this.def.size;
+        mesh.position.set(w / 2, -h / 2, -0.02);
+        mesh.scale.set(w, h, 1);
+        this.box.add(mesh);
+        this.mini = { mesh, mat };
+      } else this.mini = null;
+    }
+    const shown = on && !!this.mini;
+    if (this.mini) {
+      this.mini.mesh.visible = on;
+      // Behind a box's title the cells are dimmed a little, so the text stays easy to read.
+      this.mini.mat.opacity = this.boxAlpha * (this.symbolParts.parent ? 1 : MINI_BEHIND_TEXT);
+    }
+    this.symbolParts.visible = !shown;
   }
 
   /** The chain of opened instances from this one down to the one containing (x, y). */
@@ -458,12 +529,14 @@ export class ComponentView {
     const [w, h] = this.def.size;
     const fade = this.boxFade;
     if (sym) {
-      for (const o of sym.outline) this.box.add(makeLine(flip(o), mats.outline, 0, fade));
+      this.box.add(this.symbolParts);
+      for (const o of sym.outline) this.symbolParts.add(makeLine(flip(o), mats.outline, 0, fade));
       for (const [pin, pts] of sym.stubs) {
         const net = this.netOfPin(pin);
-        this.boxWires.push([net, this.addWire(this.box, net, pts, this.worldScale, fade)]);
+        this.boxWires.push([net, this.addWire(this.symbolParts, net, pts, this.worldScale, fade)]);
       }
-      const lb = new Label(symbolName(this.def), sym.labelAt[0], -sym.labelAt[1], { size: sym.labelSize });
+      // Outlined, so the name also reads on top of the cell miniature.
+      const lb = new Label(symbolName(this.def), sym.labelAt[0], -sym.labelAt[1], { size: sym.labelSize, outline: true });
       this.box.add(lb.text);
       this.boxLabels.push(lb);
       return;
@@ -477,16 +550,17 @@ export class ComponentView {
     }
     const size = Math.min(h * 0.2, (w * 1.4) / Math.max(8, this.def.title.length));
     const hasBuses = !!this.def.buses;
-    const title = new Label(this.def.title, w / 2, -h * (hasBuses ? 0.3 : 0.5) + (this.partLabel ? size * 0.6 : 0), { size });
+    // Outlined labels read on top of the cell miniature too.
+    const title = new Label(this.def.title, w / 2, -h * (hasBuses ? 0.3 : 0.5) + (this.partLabel ? size * 0.6 : 0), { size, outline: true });
     this.box.add(title.text);
     this.boxLabels.push(title);
     if (this.partLabel) {
-      const sub = new Label(this.partLabel, w / 2, title.text.position.y - size * 1.3, { size: size * 0.85, color: LABEL_DIM });
+      const sub = new Label(this.partLabel, w / 2, title.text.position.y - size * 1.3, { size: size * 0.85, color: LABEL_DIM, outline: true });
       this.box.add(sub.text);
       this.boxLabels.push(sub);
     }
     if (hasBuses) {
-      this.busLabel = new Label('', w / 2, -h * 0.55, { size: size * 0.9, anchorY: 'top' });
+      this.busLabel = new Label('', w / 2, -h * 0.55, { size: size * 0.9, anchorY: 'top', outline: true });
       this.box.add(this.busLabel.text);
     }
   }
@@ -564,7 +638,7 @@ export class ComponentView {
     const g = new Group();
     g.scale.setScalar(1 / s);
     const innerWorld = this.innerWorld;
-    const fade = this.contentFade;
+    const fade = this.innerFade;
     this.contents = g;
     this.group.add(g);
 
@@ -664,6 +738,7 @@ export class ComponentView {
       w.dispose();
     }
     for (const l of [...this.boxLabels, ...this.frameLabels]) l.dispose();
+    this.mini?.mat.dispose();
     this.busLabel?.dispose();
     disposeLines(this.box);
     disposeLines(this.frame);

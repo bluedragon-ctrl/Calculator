@@ -14,6 +14,8 @@ export interface LabelOptions {
   minPx?: number;
   /** Wrap lines longer than this (local units). */
   maxWidth?: number;
+  /** A dark outline around the letters, so they read on top of busy art (the die view). */
+  outline?: boolean;
 }
 
 export class Label {
@@ -32,6 +34,10 @@ export class Label {
       t.maxWidth = opts.maxWidth;
       t.textAlign = 'center';
     }
+    if (opts.outline) {
+      t.outlineWidth = '12%';
+      t.outlineColor = '#070b14';
+    }
     t.position.set(x, y, 0.2);
     t.sync();
     this.text = t;
@@ -49,7 +55,10 @@ export class Label {
   fit(pxPerUnit: number, alpha = 1): void {
     const px = this.text.fontSize * pxPerUnit;
     this.text.visible = px >= this.minPx && px <= 300 && alpha > 0.01;
-    if (this.text.fillOpacity !== alpha) this.text.fillOpacity = alpha;
+    if (this.text.fillOpacity !== alpha) {
+      this.text.fillOpacity = alpha;
+      if (this.text.outlineWidth) this.text.outlineOpacity = alpha;
+    }
   }
 
   dispose(): void {

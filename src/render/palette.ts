@@ -52,3 +52,13 @@ export const CONTACT_COLOR = new Color('#b8c1d1');
 export const WELL_COLOR = new Color('#1a3125');
 /** Brightness of a fill whose piece is at 0. */
 export const UNLIT = 0.42;
+/**
+ * Die view (§6.2a, Phase 4c): bare silicon, the pad ring, aluminium bond pads and the blocks'
+ * background. All dim, so the layers inside the blocks and the labels read on top.
+ */
+export const DIE_SILICON = new Color('#1b2130');
+export const DIE_RING = new Color('#262d3d');
+export const DIE_BLOCK = new Color('#10151f');
+export const DIE_PAD = new Color('#a9b3c4');
+/** A block that is switching: a faint cyan wash and a thick bright outline (never above 1.0). */
+export const DIE_ACTIVE = new Color('#3df5ff');

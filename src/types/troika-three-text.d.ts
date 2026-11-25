@@ -13,6 +13,7 @@ declare module 'troika-three-text' {
     outlineWidth: number | string;
     fillOpacity: number;
     outlineColor: string | number | Color;
+    outlineOpacity: number;
     sync(callback?: () => void): void;
     dispose(): void;
   }

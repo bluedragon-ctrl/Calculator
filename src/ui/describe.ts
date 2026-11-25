@@ -1,5 +1,5 @@
 // Hover tooltip contents: name, one sentence, current value (DESIGN.md §2).
-import { crossText as X, layerNotes, layerTips } from '../content/silicon';
+import { crossText as X, dieText as D, layerNotes, layerTips } from '../content/silicon';
 import { tooltipText as T, wireBlurb } from '../content/tooltips';
 import { busValue } from '../sim/bus';
 import { inputPins, outputPins } from '../sim/library';
@@ -69,6 +69,19 @@ export function describe(hit: BenchHit | ChipHit, host: Bench | ChipView): Toolt
         hint: v.def.table && !v.isExpanded ? C.tableHint : v.canExpand && !v.isExpanded ? T.zoomHint : undefined,
       };
     }
+    case 'cell': {
+      const v = hit.view;
+      return {
+        title: D.miniTitle(v.displayName),
+        body: D.mini,
+        values: pinLines(v),
+        hint: T.zoomHint,
+      };
+    }
+    case 'die':
+      return { title: D.dieTitle, body: D.die, values: [], hint: D.blockHint };
+    case 'pad':
+      return { title: D.padTitle(hit.pin), body: D.pad, values: [`Value: ${formatBit(hit.value)}`] };
     case 'key':
       return {
         title: C.keyTitle(KEY_LABELS[hit.code]),

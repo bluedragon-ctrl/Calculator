@@ -1,5 +1,6 @@
-// "Schematic | Silicon" toggle and its opt-in legend (DESIGN.md §6.2a, Phase 4b). Shown only at
-// gate and transistor level. Flipping it only changes how primitives are drawn: the simulation,
+// "Diagram | Real chip" toggle and its opt-in legend (DESIGN.md §6.2a, Phases 4b and 4c). Shown
+// everywhere inside the chip: the whole chip becomes a die, closed gates show their cells, and
+// opened gates their silicon layout. Flipping it only changes the drawing: the simulation,
 // playback and camera are not touched.
 import { siliconText as T } from '../content/silicon';
 import type { SiliconMode } from '../render/views';
@@ -54,10 +55,12 @@ export class ViewToggle {
     }
     const note = document.createElement('p');
     note.textContent = T.legendNote;
+    const dieNote = document.createElement('p');
+    dieNote.textContent = T.dieNote;
     const reality = document.createElement('p');
     reality.className = 'muted';
     reality.textContent = T.reality;
-    this.legend.append(h, list, note, reality);
+    this.legend.append(h, list, note, dieNote, reality);
 
     const row = document.createElement('div');
     row.className = 'view-toggle-row';
@@ -74,7 +77,7 @@ export class ViewToggle {
     this.onChange();
   }
 
-  /** Shown at gate and transistor level only. */
+  /** Shown inside the chip world (calculator and benches), hidden in the device world. */
   set visible(v: boolean) {
     // Follow the mode even when something else changed it (dev handle, tests).
     if (this.schematicBtn.getAttribute('aria-pressed') !== String(!this.mode.on)) this.refresh();
