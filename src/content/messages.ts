@@ -14,14 +14,20 @@ export const clockText = {
   pauseTitle: 'Stop the clock. Use Step to make one tick at a time.',
   step: '⏭ Step',
   stepTitle: 'One clock tick (Space).',
-  auto: '⟳ Auto',
-  autoTitle: 'The clock runs while the calculator is working, and stops when it is waiting for a key.',
-  play: '▶ Play',
-  playTitle: 'Run the clock: it ticks again once the last tick has finished.',
-  instant: '⚡ Instant',
-  instantTitle: 'No animation: every tick shows its result at once.',
-  speedTitle: 'Clock speed while playing',
+  run: '▶ Run',
+  runTitle: 'Run the clock. The calculator stops by itself when it is waiting for a key.',
+  speed: 'Speed',
+  speedTitle: 'How fast time runs. Far left: very slow motion. Far right: instant, no animation.',
   pulseTitle: 'The clock: it lights up on every tick.',
   ticks: (n: number) => `tick ${n}`,
   noClock: 'This part has no clock. Try the flip-flop, the register or the calculator.',
+};
+
+/** Explore menu and view controls (DESIGN.md §2). */
+export const exploreText = {
+  label: 'Explore',
+  title: 'Choose what to look at: the calculator, or one part of it on the lab bench.',
+  calculatorGroup: 'Calculator',
+  fitView: '⤢ Fit view',
+  fitViewTitle: 'Zoom out to see the whole thing (Home key). Backspace zooms out one level.',
 };

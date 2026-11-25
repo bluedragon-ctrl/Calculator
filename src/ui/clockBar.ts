@@ -1,12 +1,11 @@
-// Clock controls in the bottom bar (DESIGN.md §2, §6.5): Pause, Step, Play with a speed
-// slider, Instant, a tick counter and a light that pulses on every tick.
+// Clock controls in the bottom bar (DESIGN.md §2, §6.5): Pause, Step, Run, a tick counter and
+// a light that pulses on every tick. The speed slider next to them is wired up in main.ts.
 import { clockText as T } from '../content/messages';
-import { CLOCK_RATES, DEFAULT_RATE_INDEX, rateFromSlider, rateLabel, type ClockMode } from './clock';
+import type { ClockMode } from './clock';
 
 export interface ClockBarHandlers {
   onStep(): void;
   onMode(mode: ClockMode): void;
-  onRate(ticksPerSec: number): void;
 }
 
 export interface ClockBarState {
@@ -22,12 +21,10 @@ export class ClockBar {
   private readonly pulse = document.createElement('span');
   private readonly modes = new Map<ClockMode, HTMLButtonElement>();
   private readonly step: HTMLButtonElement;
-  private readonly rate = document.createElement('input');
-  private readonly rateValue = document.createElement('span');
   private readonly counter = document.createElement('span');
   private key = '';
 
-  constructor(host: HTMLElement, h: ClockBarHandlers) {
+  constructor(private readonly host: HTMLElement, h: ClockBarHandlers) {
     host.setAttribute('role', 'group');
     host.setAttribute('aria-label', T.group);
     this.pulse.className = 'clock-pulse';
@@ -45,30 +42,11 @@ export class ClockBar {
     };
     const pause = button(T.pause, T.pauseTitle, () => h.onMode('pause'));
     this.step = button(T.step, T.stepTitle, () => h.onStep());
-    const auto = button(T.auto, T.autoTitle, () => h.onMode('auto'));
-    const play = button(T.play, T.playTitle, () => h.onMode('play'));
-    const instant = button(T.instant, T.instantTitle, () => h.onMode('instant'));
-    this.modes.set('pause', pause).set('auto', auto).set('play', play).set('instant', instant);
-
-    const speed = document.createElement('label');
-    speed.className = 'clock-speed';
-    speed.title = T.speedTitle;
-    this.rate.type = 'range';
-    this.rate.min = '0';
-    this.rate.max = String(CLOCK_RATES.length - 1);
-    this.rate.step = '1';
-    this.rate.value = String(DEFAULT_RATE_INDEX);
-    const applyRate = () => {
-      const r = rateFromSlider(Number(this.rate.value));
-      this.rateValue.textContent = rateLabel(r);
-      h.onRate(r);
-    };
-    this.rate.addEventListener('input', applyRate);
-    speed.append(this.rate, this.rateValue);
-    applyRate();
+    const run = button(T.run, T.runTitle, () => h.onMode('run'));
+    this.modes.set('pause', pause).set('run', run);
 
     this.counter.className = 'clock-ticks';
-    host.append(this.pulse, pause, this.step, auto, play, speed, instant, this.counter);
+    host.append(this.pulse, pause, this.step, run, this.counter);
   }
 
   /** Flash the light (called when the displayed clock rises, so it also shows instant ticks). */
@@ -83,13 +61,12 @@ export class ClockBar {
     const key = `${s.enabled}|${s.mode}|${s.ticks}`;
     if (key === this.key) return;
     this.key = key;
-    for (const [m, b] of this.modes) b.setAttribute('aria-pressed', String(m === s.mode));
-    // Pause and Instant also matter without a clock (Instant skips the animation of inputs).
-    this.modes.get('play')!.disabled = !s.enabled;
-    this.modes.get('auto')!.disabled = !s.enabled;
+    for (const [m, b] of this.modes) {
+      b.setAttribute('aria-pressed', String(m === s.mode));
+      b.disabled = !s.enabled;
+    }
     this.step.disabled = !s.enabled;
-    this.rate.disabled = !s.enabled;
     this.counter.textContent = s.enabled ? T.ticks(s.ticks) : '';
-    this.counter.parentElement!.title = s.enabled ? '' : T.noClock;
+    this.host.title = s.enabled ? '' : T.noClock;
   }
 }

@@ -1,10 +1,14 @@
 // Lab bench text (DESIGN.md §7.1: plain English for ages 12+, ≤ 40 words per panel step).
 
+export type BenchGroup = 'Transistors' | 'Gates' | 'Building blocks' | 'Memory';
+
 export interface BenchText {
   /** Component name in the library. */
   component: string;
-  /** Button label. */
+  /** Name in the Explore menu. */
   label: string;
+  /** Group in the Explore menu. */
+  group: BenchGroup;
   title: string;
   /** Short panel steps, one idea each. */
   steps: string[];
@@ -20,8 +24,7 @@ export interface Preset {
 }
 
 export const benchIntro = {
-  heading: 'Lab bench',
-  help: 'Click a switch (or press A, B) to flip an input. Space makes one clock tick. Scroll to zoom, drag to move. Double-click a part to fly to it, Backspace zooms out, Home goes back.',
+  help: 'Click a switch (or press A, B) to flip an input. Space makes one clock tick. Scroll to zoom, drag to move. Double-click a part to fly to it. Backspace zooms out, Home fits the view.',
 };
 
 export const busPanelText = {
@@ -35,6 +38,7 @@ export const benches: BenchText[] = [
   {
     component: 'NMOS',
     label: 'N transistor',
+    group: 'Transistors',
     title: 'The switch: an N-type transistor',
     steps: [
       'A transistor is a tap controlled by a wire. Flip switch G (the gate) and watch the lamp.',
@@ -46,6 +50,7 @@ export const benches: BenchText[] = [
   {
     component: 'PMOS',
     label: 'P transistor',
+    group: 'Transistors',
     title: 'The opposite switch: a P-type transistor',
     steps: [
       'A P-type transistor is the opposite: it conducts when its gate is 0.',
@@ -55,6 +60,7 @@ export const benches: BenchText[] = [
   {
     component: 'NOT',
     label: 'NOT',
+    group: 'Gates',
     title: 'NOT: two switches',
     steps: [
       'A NOT gate flips its input. Flip switch A and watch the lamp do the opposite.',
@@ -65,6 +71,7 @@ export const benches: BenchText[] = [
   {
     component: 'NAND2',
     label: 'NAND',
+    group: 'Gates',
     title: 'NAND: the Lego brick',
     steps: [
       'NAND gives 0 only when A and B are both 1. Try all four combinations.',
@@ -75,6 +82,7 @@ export const benches: BenchText[] = [
   {
     component: 'NOR2',
     label: 'NOR',
+    group: 'Gates',
     title: 'NOR',
     steps: [
       'NOR gives 1 only when A and B are both 0. Try all four combinations.',
@@ -84,6 +92,7 @@ export const benches: BenchText[] = [
   {
     component: 'XOR2',
     label: 'XOR',
+    group: 'Gates',
     title: 'XOR: are they different?',
     steps: [
       'XOR gives 1 when A and B are different. Adders use it to add bits.',
@@ -94,6 +103,7 @@ export const benches: BenchText[] = [
   {
     component: 'AND2',
     label: 'AND',
+    group: 'Gates',
     title: 'AND is secretly NAND + NOT',
     steps: [
       'AND gives 1 only when A and B are both 1.',
@@ -103,6 +113,7 @@ export const benches: BenchText[] = [
   {
     component: 'OR2',
     label: 'OR',
+    group: 'Gates',
     title: 'OR is NOR + NOT',
     steps: [
       'OR gives 1 when A or B (or both) is 1.',
@@ -112,6 +123,7 @@ export const benches: BenchText[] = [
   {
     component: 'HalfAdder',
     label: 'Half adder',
+    group: 'Building blocks',
     title: 'Half adder: 1 + 1 = 10',
     steps: [
       'A half adder adds two bits. The answer is 0, 1 or 2, so it needs two output bits: sum and carry.',
@@ -122,6 +134,7 @@ export const benches: BenchText[] = [
   {
     component: 'FullAdder',
     label: 'Full adder',
+    group: 'Building blocks',
     title: 'Full adder: three bits',
     steps: [
       'A full adder adds three bits: A, B and CIN, the carry coming in from the bit before.',
@@ -132,11 +145,12 @@ export const benches: BenchText[] = [
   {
     component: 'AddSub8',
     label: 'Adder/subtractor',
+    group: 'Building blocks',
     title: '8-bit adder/subtractor',
     steps: [
       'Set A and B in the number boxes, or click the bit switches. R is the answer, in binary and as a number.',
       'Zoom in: eight full adders stacked up, one per bit. The carry from each bit flows down into the next.',
-      'Pick −1 + 1 with slow motion on. Every bit makes a carry, so you can watch it ripple from bit 0 down to bit 7.',
+      'Pick −1 + 1 and drag Speed to the left. Every bit makes a carry, so you can watch it ripple from bit 0 down to bit 7.',
       'Subtraction is a trick. SUB = 1 makes the XOR gates flip every bit of B, and adds 1 as the first carry. That gives A − B.',
       'V (overflow) lights up when the answer does not fit in −128 to 127. Try 127 + 1.',
     ],
@@ -150,6 +164,7 @@ export const benches: BenchText[] = [
   {
     component: 'SRLatch',
     label: 'SR latch',
+    group: 'Memory',
     title: 'SR latch: a loop that remembers',
     steps: [
       'An SR latch remembers one bit. Set S to 1, then back to 0. Q stays 1: the latch remembers!',
@@ -161,6 +176,7 @@ export const benches: BenchText[] = [
   {
     component: 'DLatch',
     label: 'D latch',
+    group: 'Memory',
     title: 'D latch: a door for one bit',
     steps: [
       'A D latch has a data input D and an enable E. While E is 1, the door is open: Q copies D.',
@@ -172,6 +188,7 @@ export const benches: BenchText[] = [
   {
     component: 'DFF',
     label: 'Flip-flop',
+    group: 'Memory',
     title: 'D flip-flop: one bit, one tick',
     steps: [
       'A flip-flop stores D only at one moment: when the clock rises from 0 to 1. That is one tick.',
@@ -183,6 +200,7 @@ export const benches: BenchText[] = [
   {
     component: 'Register8',
     label: 'Register',
+    group: 'Memory',
     title: '8-bit register: a stored number',
     steps: [
       'A register stores a whole number: eight flip-flops sharing one clock. The calculator keeps X, Y and M in registers like this.',
@@ -199,6 +217,7 @@ export const benches: BenchText[] = [
   {
     component: 'SevenSegDecoder',
     label: '7-segment',
+    group: 'Building blocks',
     title: '7-segment decoder: drawing digits',
     steps: [
       'A display digit has seven bars called segments, a to g. This decoder turns a 4-bit code into the segments to light.',

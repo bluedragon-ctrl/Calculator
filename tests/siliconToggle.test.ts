@@ -116,4 +116,27 @@ describe('silicon toggle', () => {
     }
     expect(new Bench(library.get('NAND2'), library, new WireMaterials()).hasCrossSection).toBe(false);
   });
+
+  it('is only offered where it changes something: an opened gate on screen', () => {
+    const nand = new Bench(library.get('NAND2'), library, new WireMaterials());
+    settle(nand);
+    expect(nand.view.showsTransistorsIn(VIEW)).toBe(true);
+    // Looking somewhere else: nothing to change.
+    expect(nand.view.showsTransistorsIn({ left: 1000, right: 1010, bottom: 1000, top: 1010 })).toBe(false);
+    nand.dispose();
+
+    // Zoomed out on XOR: its NAND gates are visible, but closed (they keep their symbols).
+    const xor = new Bench(library.get('XOR2'), library, new WireMaterials());
+    const [l, b, r, t] = xor.view.worldBounds;
+    const span = Math.max(r - l, t - b);
+    let pxPerWorld = 0;
+    for (let px = 1; px < 2000 && !pxPerWorld; px *= 1.1) {
+      const v = { left: l - span, right: r + span, bottom: b - span, top: t + span, pxPerWorld: px };
+      for (let i = 0; i < 20; i++) xor.update(1000, v);
+      if (xor.view.showsGates) pxPerWorld = px;
+    }
+    expect(pxPerWorld).toBeGreaterThan(0);
+    expect(xor.view.showsTransistorsIn({ left: l - span, right: r + span, bottom: b - span, top: t + span })).toBe(false);
+    xor.dispose();
+  });
 });

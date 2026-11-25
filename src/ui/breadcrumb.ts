@@ -8,7 +8,8 @@ export class Breadcrumb {
   private readonly el = document.createElement('nav');
   private key = '';
 
-  constructor(host: HTMLElement) {
+  /** `lead` is kept in front of the path (the Fit view button). */
+  constructor(host: HTMLElement, private readonly lead?: HTMLElement) {
     this.el.className = 'breadcrumb';
     this.el.setAttribute('aria-label', 'Zoom path');
     host.append(this.el);
@@ -18,7 +19,7 @@ export class Breadcrumb {
     const key = crumbs.map((c) => c.text).join('›');
     if (key === this.key) return;
     this.key = key;
-    const items: HTMLElement[] = [];
+    const items: HTMLElement[] = this.lead ? [this.lead] : [];
     crumbs.forEach((c, i) => {
       if (i > 0) {
         const sep = document.createElement('span');
