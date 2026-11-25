@@ -1,7 +1,6 @@
 // Device world text (DESIGN.md §2, §6.2, §6.2a). Plain English, ages 12+, ≤ 40 words per step.
 
 export const devicePanel = {
-  title: 'A pocket calculator',
   steps: [
     'Type 2 + 3 = on your keyboard, or click the keys. The calculator works like a normal one.',
     'How did it know the answer? Click "Look inside" to take the cover off.',
@@ -17,7 +16,7 @@ export const deviceText = {
   closeCover: '◂ Close the cover',
   intoChip: 'Into the chip ▸',
   crumbDevice: 'Calculator',
-  /** Panel button for the device world. */
+  /** Name in the Explore menu. */
   button: 'Pocket calculator',
   crumbBoard: 'Circuit board',
 };

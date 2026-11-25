@@ -47,8 +47,8 @@ An interactive web page that lets students fly from a pocket calculator down to 
 
 ```
 ┌──────────────────────────────────────────────────────────────┬──────────────────┐
-│ Breadcrumb: Calculator › Chip › Adder › Bit 3 › XOR › NAND   │  MISSION PANEL   │
-│                                                              │  title           │
+│ ⤢ Fit view  Chip › Adder › Bit 3 › XOR › NAND                 │  Explore [menu▾] │
+│                                                              │  MISSION PANEL   │
 │                                                              │  short text      │
 │                    MAIN VIEW (three.js canvas)               │  [Next] [Hint]   │
 │                                                              │                  │
@@ -56,12 +56,13 @@ An interactive web page that lets students fly from a pocket calculator down to 
 │  │ mini-calc │  (HUD: display + clickable keys)              │  ✓ ✓ ● ○ ○       │
 │  └───────────┘                                               │                  │
 ├──────────────────────────────────────────────────────────────┴──────────────────┤
-│ CLOCK BAR:  ⏸ ▶  ⏭ step   speed [—●——]  slow-motion [——●—]  tick #42   ⚙ quality │
+│ CLOCK BAR:  ⏸ pause  ⏭ step  ▶ run   speed [slow —●— instant]   tick #42   ⚙ quality │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 - **Mini-calculator HUD**: always visible except at device level. It mirrors the simulated display and has clickable keys. The physical keyboard works everywhere.
-- **Breadcrumb**: shows the current zoom path. Each part is clickable to fly back out.
+- **Explore menu**: one grouped drop-down (Calculator, Transistors, Gates, Building blocks, Memory) chooses the scene. It is the only place that names the scene.
+- **Breadcrumb**: shows the zoom path inside the scene. Each part is clickable to fly back out. A **Fit view** button in front of it zooms out to the whole scene.
 - **Hover tooltip** on any component or wire: name, one-sentence explanation, current value (decimal + binary for buses).
 - **Mission panel**: can be collapsed.
 
@@ -274,7 +275,7 @@ Realism is added only where it is honest. CMOS logic contains **no resistors or 
 - **LOD rule:** if an instance's on-screen width < ~140 px, draw it as a **box** (glowing outline, label, pins, bus values). Above ~220 px, draw its **contents**. Crossfade between the two.
 - three.js objects for expanded instances are created lazily, cached, and disposed when far away. Off-screen instances are culled.
 - Leaf gates expand into **CMOS transistor schematics**: VDD rail on top, GND rail on the bottom, the PMOS pull-up network, and the NMOS pull-down network.
-- **Controls:** scroll = zoom toward the cursor, drag = pan, double-click = fly to fit the component, breadcrumb/`Backspace` = zoom out one level, `Home` = back to chip overview.
+- **Controls:** scroll = zoom toward the cursor, drag = pan, double-click = fly to fit the component, breadcrumb/`Backspace` = zoom out one level, `Home` or the **Fit view** button = zoom out to the whole scene.
 
 ### 6.4 Visual language
 
@@ -297,12 +298,10 @@ Realism is added only where it is honest. CMOS logic contains **no resistors or 
 - Bloom only on "1" wires, sparks and active transistors. Labels are never bloomed.
 
 ### 6.5 Time and motion
-- The **sim timeline** of each tick is played back. `slow-motion` sets milliseconds per delta step (e.g., 20–400 ms). A spark's travel time along a wire = one delta step.
+- The **sim timeline** of each tick is played back. One **speed** slider sets milliseconds per delta step (1000 → 20 ms) and, at its right end, **Instant** (no animation, so the calculator can just be used). A spark's travel time along a wire = one delta step.
 - **Clock modes:**
   - **Pause**, plus **Step** (one tick).
-  - **Play** (0.25–4 ticks/s).
-  - **Auto** (default): runs while the control unit is busy and pauses in IDLE.
-  - **Instant**: no animation, so the calculator can just be used.
+  - **Run** (default on the calculator): ticks at a rate tied to the speed slider (0.5–4 ticks/s), never before the last tick has finished playing. With a control unit it runs only while there is work and stops by itself in IDLE; on a bench it runs freely. Benches open paused.
 - Honest framing on screen: *"Time slowed down about a billion times. The spark shows the signal changing, not electrons moving."*
 - Respect `prefers-reduced-motion`: no sparks, instant camera cuts.
 
@@ -505,7 +504,7 @@ A tiny stored-program CPU (~8 instructions) running the calculator as a program 
 | Load capacitor (Phase 2) | Faint plates from OUT to GND plus a gauge that fills (output → 1) or drains (→ 0) with an RC-like curve while the output's spark travels; the highlighted conducting path shows where the charge flows. Its tooltip says it explains the delay and is not a real part | |
 | MOSFET symbols (Phase 2) | Three-terminal enhancement symbol: gate plate, channel (broken when off, solid and glowing when on), drain/source leads joining from the side, arrow on the source (out for NMOS, in for PMOS), bubble on the PMOS gate. Switch icons and P/N tags stay. NAND4/NOR4 boxes are 4 units wide to make room | |
 | Bench layout (Phase 2) | The bench scales the box so pins are at least 0.8 world units apart, and shrinks switches/lamps to the pin spacing. Top inputs get switches above, bottom outputs lamps below. Benches with buses get number boxes, single-bit toggles and presets in the panel. Max zoom-in raised (view height 0.001) so a transistor of the AddSub8 can fill the screen | |
-| Slow-motion range | Slider: 0 = instant, then 20–1000 ms per delta step (§6.5 suggested 20–400) | |
+| Slow-motion range | Slider: 0 = instant, then 20–1000 ms per delta step (§6.5 suggested 20–400) | superseded: "One speed control" |
 | Extra benches | AND and OR benches added (needed for mission 5); NAND3/4, NOR3/4 exist and are tested but have no bench yet | Phase 5 |
 | Font | Inter SemiBold (OFL licence, `src/assets/fonts`) bundled for troika; labels are kept to Latin characters so troika never fetches fallback fonts from its CDN | |
 | Real parts (after Phase 1 review) | No resistors/capacitors inside logic (CMOS has none). Real parts appear where honest: board props in the device world (Phase 4), load-capacitor animation and textbook MOSFET symbols (Phase 2), opt-in silicon layout view (new Phase 4b). See §6.2a | |
@@ -515,9 +514,9 @@ A tiny stored-program CPU (~8 instructions) running the calculator as a program 
 | Behavioural vs structural (Phase 3) | Register8 uses behavioural DFFs, as the full machine will. A bench of a component that is behavioural itself (the DFF) simulates its structure (`flatten(…, { structural: true })`). Tests compare both versions on every sequence of up to 7 actions (DFF) and on random register runs | |
 | Inside a behavioural DFF (Phase 3) | Opening one builds a local structural copy (`LocalSim`) with its own playback. It starts by clocking in the stored bit, then follows the *displayed* values at the instance's pins (when a spark arrives). So inside, Q changes a few gate delays after the outside Q (the behavioural model changes at the edge). The tooltip explains that the inside is replayed | |
 | Register layout (Phase 3) | `MUX2` = NOT + 3 NAND2, with the select pin between a and b so it needs no crossings. A `RegBit` composite (mux + DFF) gives the zoom path register → bit → flip-flop → D latch → NAND → transistors. CLK and LOAD enter Register8 at the bottom left and run up to every bit; their branches and the D lines cross (unavoidable, drawn without junction dots) | |
-| Clock bar (Phase 3) | Pause / Step / (Phase 4: Auto) / Play / Instant, one mode at a time. Play (0.25–4 ticks/s) waits until the last tick has finished playing, so slow motion also slows the clock. Instant = no animation (slow-motion slider disabled); Step still works. Space = Step, also when a button has focus (students click a preset, then press Space). Step/Play are disabled for parts without a clock. The footer title was dropped to fit 1280 px | Phase 4: Auto |
+| Clock bar (Phase 3) | Pause / Step / (Phase 4: Auto) / Play / Instant, one mode at a time. Play (0.25–4 ticks/s) waits until the last tick has finished playing, so slow motion also slows the clock. Instant = no animation (slow-motion slider disabled); Step still works. Space = Step, also when a button has focus (students click a preset, then press Space). Step/Play are disabled for parts without a clock. The footer title was dropped to fit 1280 px | superseded: "One speed control" |
 | Clock on benches (Phase 3) | A `clk` pin gets a clock source (square-wave mark) instead of a switch; clicking it is one tick. The clock bar's light pulses when the displayed clock rises | |
-| Clock mode "Auto" (Phase 4) | The default. Ticks at the Play rate (and, like Play, waits for the last tick's animation) while the calculator is busy (a key line high, READY, STATE ≠ IDLE or keys queued); stops by itself in IDLE. On benches there is no control unit, so Auto just waits (like Pause). Instant on the calculator runs every pending tick at once | |
+| Clock mode "Auto" (Phase 4) | The default. Ticks at the Play rate (and, like Play, waits for the last tick's animation) while the calculator is busy (a key line high, READY, STATE ≠ IDLE or keys queued); stops by itself in IDLE. On benches there is no control unit, so Auto just waits (like Pause). Instant on the calculator runs every pending tick at once | superseded: "One speed control" (now Run) |
 | Instant playback fix (Phase 3) | Wires that already existed kept stale values when a timeline played instantly (slider at 0), because only nets mid-transition were re-synced. Now nets that settled since the last frame are re-synced too | |
 | Auto layout (Phase 4) | Big schematics (encoder, decoders, muxes, control, the whole chip) are placed by a column router (`circuits/autoLayout.ts`): parts in columns, one vertical track per net in each channel between columns, feed-throughs through the gaps between parts, feedback nets along their own rows in the top margin. Own inputs/outputs sit level with their wires. The hand-authored layouts of Phases 1–3 stay. The layout tests check every generated layout | if a layout reads badly |
 | Keyboard encoder (Phase 4) | A plain OR encoder (code bit i = OR of the 8 lines whose number has bit i; `pressed` = OR of all 16), not a true priority encoder: the UI never drives two lines at once (key queue). Two lines at once give the OR of their codes, which is tested and could become a detective puzzle | |
@@ -543,3 +542,7 @@ A tiny stored-program CPU (~8 instructions) running the calculator as a program 
 | Legend (Phase 4b) | Opt-in: a "Legend" button appears next to the toggle in Silicon mode and opens a short HTML key (layer colours, 1 vs 0, a reality-check line). Closed by default | |
 | Single-transistor bench (Phase 4b) | New `NMOS` and `PMOS` parts (not used in the calculator): one transistor between power and a lamp, `out` = conducts (gate 1 for N, 0 for P), else 0 (at switch level the lamp wire floats). `CmosDef` gained an optional `pullDown` and `upType` for this. Benches "N transistor" and "P transistor" (needed by mission 3) | |
 | Cross-section (Phase 4b) | On the transistor benches only, behind a "Show cross-section" panel button: a side view below the bench (substrate, n-well for PMOS, source/drain islands, oxide, poly gate, contacts, metal) with callout labels on the right. Gate, power and lamp sides light with their values; a glowing channel joins the islands when the transistor conducts. Labelled "to power"/"to the lamp" instead of source/drain | |
+| One speed control (UI review) | The Instant mode, the clock-rate slider and the slow-motion slider were one control too many. Now one **Speed** slider: positions 0–99 = 1000 → 20 ms per delta step (log scale) and 0.5 → 4 ticks/s; 100 = Instant. Clock buttons are Pause / Step / Run. Run = the old Auto on the calculator and the old Play on benches. Benches open paused (as Auto did there), the calculator opens running. At Instant with the clock paused, key presses wait for Step | |
+| Explore menu and breadcrumb (UI review) | The panel's row of scene buttons became one grouped `<select>` ("Explore"), which also replaces the "Lab bench" heading and the calculator/device panel titles (bench lesson titles such as "NAND: the Lego brick" stay). The breadcrumb now shows only the zoom path inside the scene (no "Calculator" / "Lab bench" root); its first item zooms out to the whole scene. The device world keeps "Calculator › Circuit board". After choosing, the menu loses focus so letters and digits keep driving the bench and calculator | |
+| Fit view (UI review) | The footer's "⌂ Home" button looked like "back to the start screen" but only reset the zoom. It is now a "⤢ Fit view" button in front of the breadcrumb (hidden in the device world); the Home key does the same | |
+| Silicon toggle visibility (UI review) | Shown only when an opened gate (a transistor view) is on screen, the only case where switching changes the picture. Before, it showed whenever the zoomed part contained gates, e.g. on the chip overview (the M-lamp NOT sits directly in the chip), where nothing visibly changed | |

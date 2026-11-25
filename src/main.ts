@@ -1,12 +1,12 @@
 import './style.css';
 import { library } from './circuits/library';
 import { keyCodeFor, Machine } from './circuits/machine';
-import { benches, benchIntro, slowMotionNote, type BenchText } from './content/bench';
+import { benches, benchIntro, slowMotionNote, type BenchGroup, type BenchText } from './content/bench';
 import { calculatorPanel } from './content/calculator';
 import { devicePanel, deviceText, propText } from './content/device';
 import { calculatorTips } from './content/calculator';
 import { KEY_LABELS } from './circuits/machine';
-import { noWebGL } from './content/messages';
+import { clockText, exploreText, noWebGL } from './content/messages';
 import { tooltipText } from './content/tooltips';
 import { Bench } from './render/bench';
 import { ChipView } from './render/chip';
@@ -27,15 +27,12 @@ import {
   QualityProbe, loadQualitySetting, nextQualitySetting, saveQualitySetting,
   type Quality, type QualitySetting,
 } from './ui/quality';
-import { msLabel, sliderToMs } from './ui/slowmo';
+import { CALCULATOR_SPEED, isInstant, speedLabel, speedToMs, speedToRate } from './ui/speed';
 import { ClockRunner } from './ui/clock';
 import { ClockBar } from './ui/clockBar';
 import { ViewToggle } from './ui/viewToggle';
 import { crossText, siliconText } from './content/silicon';
 import type { SiliconMode } from './render/views';
-
-/** Slow-motion slider position used when the calculator is first shown (about 30 ms per step). */
-const CALCULATOR_SLOWMO = 12;
 
 function safeLocalStorage(): Storage | undefined {
   try {
@@ -94,28 +91,31 @@ function start(): void {
   applyMotion();
   reducedMotion.addEventListener('change', applyMotion);
 
-  // --- Slow motion and clock (DESIGN.md §6.5) ---
-  const slider = $<HTMLInputElement>('slowmo');
-  const sliderValue = $('slowmo-value');
+  // --- Speed and clock (DESIGN.md §6.5): one slider from slow motion to instant ---
+  const slider = $<HTMLInputElement>('speed');
+  const sliderValue = $('speed-value');
+  $('speed-name').textContent = clockText.speed;
+  $('speed-label').title = clockText.speedTitle;
   const clock = new ClockRunner();
-  let msPerDelta = sliderToMs(Number(slider.value));
-  const applySlowmo = () => {
-    // Instant mode skips the animation whatever the slider says.
-    const instant = clock.mode === 'instant';
-    msPerDelta = instant ? 0 : sliderToMs(Number(slider.value));
-    slider.disabled = instant;
-    sliderValue.textContent = msLabel(msPerDelta);
+  let msPerDelta = speedToMs(Number(slider.value));
+  /** The slider is at its right end: no animation, results show at once. */
+  let instant = false;
+  const applySpeed = () => {
+    const v = Number(slider.value);
+    instant = isInstant(v);
+    msPerDelta = speedToMs(v);
+    clock.ticksPerSec = speedToRate(v);
+    sliderValue.textContent = speedLabel(v);
     host()?.setSlowMotion(msPerDelta);
   };
+  /** At Instant speed a running clock does all of the calculator's pending ticks at once. */
+  const runsInstantly = () => instant && clock.mode === 'run';
   const step = () => host()?.tick();
   const clockBar = new ClockBar($('clock'), {
     onStep: step,
-    onMode: (m) => {
-      clock.setMode(m);
-      applySlowmo();
-    },
-    onRate: (r) => (clock.ticksPerSec = r),
+    onMode: (m) => clock.setMode(m),
   });
+  applySpeed();
 
   // --- Keys: HUD, physical keyboard, chip-world key buttons ---
   /** A calculator key was pressed anywhere. */
@@ -123,7 +123,7 @@ function start(): void {
     if (onDevice) device.press(code);
     if (scene?.kind === 'chip') {
       scene.chip.press(code);
-      if (clock.mode === 'instant') scene.chip.runUntilIdle();
+      if (runsInstantly()) scene.chip.runUntilIdle();
     } else {
       // Nothing to watch: the calculator works at once (DESIGN.md §11).
       machine.press(code);
@@ -136,28 +136,34 @@ function start(): void {
   const viewToggle = new ViewToggle(view, silicon, () => refreshHover());
 
   // --- Panel and scenes ---
-  const buttons = $('bench-buttons');
-  const breadcrumb = new Breadcrumb(view);
+  const fitBtn = document.createElement('button');
+  fitBtn.type = 'button';
+  fitBtn.className = 'fit-btn';
+  fitBtn.textContent = exploreText.fitView;
+  fitBtn.title = exploreText.fitViewTitle;
+  fitBtn.addEventListener('click', () => goHome());
+  const breadcrumb = new Breadcrumb(view, fitBtn);
   const tooltip = new Tooltip(view);
   const stats = $('stats');
   const countCache = new Map<string, number>();
   const count = (def: ComponentDef) => transistorCount(def, library, countCache);
   $('stats-total').textContent = calculatorPanel.totalTransistors(count(library.get('Calculator')));
   $('stats-note').textContent = calculatorPanel.transistorNote;
-  let slowmoTouched = false;
-  slider.addEventListener('input', () => (slowmoTouched = true), { once: true });
+  let speedTouched = false;
+  slider.addEventListener('input', () => (speedTouched = true), { once: true });
+  const explore = $<HTMLSelectElement>('explore');
 
-  const setPanel = (title: string, steps: string[], help: string, pressed: string) => {
-    $('bench-title').textContent = title;
+  /** `title` is the bench's lesson title; the calculator scenes need none (the menu names them). */
+  const setPanel = (title: string | null, steps: string[], help: string, current: string) => {
+    $('bench-title').textContent = title ?? '';
+    $('bench-title').hidden = !title;
     $('bench-steps').replaceChildren(...steps.map((s) => {
       const li = document.createElement('li');
       li.textContent = s;
       return li;
     }));
     $('bench-help').textContent = help;
-    for (const btn of buttons.querySelectorAll('button')) {
-      btn.setAttribute('aria-pressed', String(btn.dataset.component === pressed));
-    }
+    explore.value = current;
   };
   const clearScene = () => {
     if (!scene) return;
@@ -209,7 +215,7 @@ function start(): void {
       clearScene();
       $('bus-panel').hidden = true;
       stats.hidden = true;
-      setPanel(devicePanel.title, devicePanel.steps, devicePanel.help, 'Device');
+      setPanel(null, devicePanel.steps, devicePanel.help, 'Device');
       refreshCrossBtn();
       refreshDeviceUi();
     }
@@ -237,15 +243,17 @@ function start(): void {
     const chip = new ChipView(machine, library, mats, silicon);
     scene = { kind: 'chip', chip };
     chip.onClockRise(() => clockBar.flash());
-    if (!slowmoTouched) slider.value = String(CALCULATOR_SLOWMO);
-    applySlowmo();
+    if (!speedTouched) slider.value = String(CALCULATOR_SPEED);
+    applySpeed();
+    // The clock runs by itself; it stops on its own when the calculator waits for a key.
+    clock.setMode('run');
     chip.setFade(reducedMotion.matches ? 0 : FADE_SEC);
     stage.scene.add(chip.object);
     nav.flyTo(chip.homeView(aspect()), 0);
     busPanel = null;
     $('bus-panel').hidden = true;
     stats.hidden = false;
-    setPanel(calculatorPanel.title, calculatorPanel.steps, calculatorPanel.help, 'Calculator');
+    setPanel(null, calculatorPanel.steps, calculatorPanel.help, 'Calculator');
     refreshCrossBtn();
   };
   // Cross-section button (single-transistor benches only, DESIGN.md §6.2a).
@@ -274,6 +282,8 @@ function start(): void {
     scene = { kind: 'bench', bench, text: b };
     bench.onClockRise(() => clockBar.flash());
     bench.setSlowMotion(msPerDelta);
+    // A bench has no control unit to stop a running clock, so it starts paused: Step or Run.
+    clock.setMode('pause');
     bench.setFade(reducedMotion.matches ? 0 : FADE_SEC);
     busPanel = new BusPanel($('bus-panel'), bench, b);
     stage.scene.add(bench.object);
@@ -282,29 +292,41 @@ function start(): void {
     setPanel(b.title, b.steps, benchIntro.help, b.component);
     refreshCrossBtn();
   };
-  $('panel-heading').textContent = calculatorPanel.benchHeading;
+  // Explore menu (DESIGN.md §2): one grouped list instead of a button per scene.
+  $('explore-label').textContent = exploreText.label;
+  explore.title = exploreText.title;
   $('slowmo-note').textContent = slowMotionNote;
-  for (const [label, id, fn] of [
-    [deviceText.button, 'Device', () => showDevice()],
-    [calculatorPanel.button, 'Calculator', showCalculator],
-  ] as const) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'calc';
-    btn.textContent = label;
-    btn.dataset.component = id;
-    btn.addEventListener('click', fn);
-    buttons.append(btn);
-  }
+  const scenes = new Map<string, () => void>([
+    ['Device', () => showDevice()],
+    ['Calculator', showCalculator],
+  ]);
+  const optGroup = (label: string) => {
+    const g = document.createElement('optgroup');
+    g.label = label;
+    explore.append(g);
+    return g;
+  };
+  const option = (g: HTMLOptGroupElement, value: string, text: string) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = text;
+    g.append(o);
+  };
+  const calcGroup = optGroup(exploreText.calculatorGroup);
+  option(calcGroup, 'Device', deviceText.button);
+  option(calcGroup, 'Calculator', calculatorPanel.button);
+  const groups = new Map<BenchGroup, HTMLOptGroupElement>();
   for (const b of benches) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.textContent = b.label;
-    btn.dataset.component = b.component;
-    btn.addEventListener('click', () => showBench(b));
-    buttons.append(btn);
+    if (!groups.has(b.group)) groups.set(b.group, optGroup(b.group));
+    option(groups.get(b.group)!, b.component, b.label);
+    scenes.set(b.component, () => showBench(b));
   }
-  slider.addEventListener('input', applySlowmo);
+  explore.addEventListener('change', () => {
+    scenes.get(explore.value)?.();
+    // Give the keyboard back to the calculator and bench letters (no type-ahead in the menu).
+    explore.blur();
+  });
+  slider.addEventListener('input', applySpeed);
 
   // --- Zoom navigation: fly-to, breadcrumb, Backspace / Home (DESIGN.md §6.3) ---
   function aspect() {
@@ -327,6 +349,7 @@ function start(): void {
     else goHome();
   };
   const updateBreadcrumb = () => {
+    fitBtn.hidden = onDevice;
     if (onDevice) {
       const open = device.phase !== 'closed';
       viewToggle.visible = false;
@@ -337,18 +360,15 @@ function start(): void {
       return;
     }
     if (!scene) return;
-    const crumbs: Crumb[] = scene.kind === 'chip'
-      ? [{ text: deviceText.crumbDevice, onClick: () => showDevice(true) }]
-      : [{ text: 'Lab bench', onClick: goHome }];
+    // Only the zoom path inside the scene: the Explore menu already says which scene this is.
     const chain = focusChain();
-    for (const v of chain) crumbs.push({ text: v.displayName, onClick: () => flyToView(v) });
+    const crumbs: Crumb[] = chain.map((v, i) => ({ text: v.displayName, onClick: i === 0 ? goHome : () => flyToView(v) }));
     const last = chain.at(-1);
     if (last?.isTransistorView) crumbs.push({ text: last.isSiliconView ? siliconText.crumb : tooltipText.transistors });
     breadcrumb.set(crumbs);
-    // The toggle belongs to gate and transistor level.
-    viewToggle.visible = !!last && (!!last.def.cmos || last.showsGates);
+    // Only where it changes something: an opened gate on screen (closed gate boxes keep symbols).
+    viewToggle.visible = !!host()?.view.showsTransistorsIn(stage.visibleRect);
   };
-  $('home-btn').addEventListener('click', goHome);
 
   // --- Pointer: click switches/keys, hover tooltips, double-click to fly ---
   const HOVER_TOL_PX = 6;
@@ -365,7 +385,7 @@ function start(): void {
   };
   nav.onClick = (x, y) => {
     const h = host();
-    if (h?.click(x, y) && scene?.kind === 'chip' && clock.mode === 'instant') scene.chip.runUntilIdle();
+    if (h?.click(x, y) && scene?.kind === 'chip' && runsInstantly()) scene.chip.runUntilIdle();
     refreshHover();
   };
   nav.onHover = (_x, _y, px, py) => {
@@ -452,6 +472,7 @@ function start(): void {
     // A bench's own input letters come first (e.g. R of the SR latch); otherwise the calculator.
     const pin = e.key.toLowerCase();
     if (scene?.kind === 'bench' && pin.length === 1 && scene.bench.inputs.includes(pin)) {
+      e.preventDefault();
       scene.bench.toggle(pin);
       return;
     }
@@ -515,8 +536,9 @@ function start(): void {
     const h = host();
     const chip = scene?.kind === 'chip' ? scene.chip : null;
     if (h) {
-      if (chip && clock.mode === 'instant' && machine.busy) chip.runUntilIdle();
-      else if (clock.update(dtMs, h.playback.busy, !!chip && machine.busy)) h.tick();
+      if (chip && instant && machine.busy) {
+        if (runsInstantly()) chip.runUntilIdle();
+      } else if (clock.update(dtMs, h.playback.busy, chip ? machine.busy : undefined)) h.tick();
     }
     clockBar.update({ enabled: !!h?.hasClock, mode: clock.mode, ticks: h?.ticks ?? 0, high: h?.clockValue === 1 });
     mats.worldPerPx = 1 / stage.pxPerWorld;

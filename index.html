@@ -10,10 +10,10 @@
     <div id="app">
       <div id="workspace">
         <main id="view"></main>
-        <aside id="panel" aria-label="Lab bench">
-          <h2 id="panel-heading"></h2>
-          <div id="bench-buttons" role="group" aria-label="Choose a component"></div>
-          <h3 id="bench-title"></h3>
+        <aside id="panel" aria-label="Explore">
+          <label id="explore-label" for="explore"></label>
+          <select id="explore"></select>
+          <h3 id="bench-title" hidden></h3>
           <ol id="bench-steps"></ol>
           <section id="bus-panel" aria-label="Numbers" hidden></section>
           <section id="stats" class="stats" aria-label="Transistor count" hidden>
@@ -27,11 +27,10 @@
       </div>
       <footer id="clock-bar">
         <div id="clock" class="clock"></div>
-        <label class="slowmo">slow motion
-          <input id="slowmo" type="range" min="0" max="100" value="60" />
-          <span id="slowmo-value"></span>
+        <label id="speed-label" class="speed"><span id="speed-name"></span>
+          <input id="speed" type="range" min="0" max="100" value="40" />
+          <span id="speed-value"></span>
         </label>
-        <button id="home-btn" type="button" title="Back to the whole view (Home). Backspace zooms out one level.">⌂ Home</button>
         <span class="spacer"></span>
         <span id="fps" aria-live="off">— fps</span>
         <button id="quality-btn" type="button" title="Graphics quality">⚙ quality: auto</button>

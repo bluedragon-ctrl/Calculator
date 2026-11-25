@@ -245,6 +245,16 @@ export class ComponentView {
     return count(this.def);
   }
 
+  /**
+   * True when an opened gate (a transistor view) is on screen inside `view`. Only those change
+   * with the Schematic | Silicon toggle: closed gate boxes keep their symbols (DESIGN.md §11).
+   */
+  showsTransistorsIn(view: Rect): boolean {
+    if (!this.group.visible || !intersects(this.worldBounds, view) || !this.isExpanded) return false;
+    if (this.isTransistorView) return true;
+    return this.children.some((c) => c.showsTransistorsIn(view));
+  }
+
   /** True once the contents are (mostly) showing. */
   get isExpanded(): boolean {
     return !!this.contents && this.alpha >= 0.5;
