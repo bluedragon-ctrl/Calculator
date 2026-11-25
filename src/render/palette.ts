@@ -40,3 +40,15 @@ export const SPARK_PX = 11;
 /** Load capacitor (§6.2a): a faint symbol, and the charge in its gauge (not bloomed). */
 export const CAP_COLOR = new Color('#4d5d85');
 export const CHARGE = new Color('#3df5ff');
+/**
+ * Silicon view (§6.2a, Phase 4b): the usual layout-plot colours, kept at or below 1.0 so the
+ * fills never bloom. A piece carrying 1 is drawn at full brightness with a bright outline; a
+ * piece at 0 is dimmed with a thin outline (brightness and thickness, not colour alone).
+ */
+export const DIFF_COLOR = new Color('#2fa35f');
+export const POLY_COLOR = new Color('#d9473c');
+export const METAL_COLOR = new Color('#3f78e0');
+export const CONTACT_COLOR = new Color('#b8c1d1');
+export const WELL_COLOR = new Color('#1a3125');
+/** Brightness of a fill whose piece is at 0. */
+export const UNLIT = 0.42;

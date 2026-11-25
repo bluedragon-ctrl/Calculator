@@ -15,7 +15,7 @@ import { BLOOM_BOOST, LABEL, LABEL_DIM, WIRE_ON } from './palette';
 import { Playback } from './playback';
 import { segmentRects, SEGMENTS } from './segments';
 import type { View } from './stage';
-import { ComponentView, distToPolyline, NetWires, type Hit, type ViewContext, type ViewRect } from './views';
+import { ComponentView, distToPolyline, NetWires, type Hit, type SiliconMode, type ViewContext, type ViewRect } from './views';
 import { makeLine, Wire, type WireMaterials } from './wires';
 
 /** World units per inner unit of the calculator chip. */
@@ -62,12 +62,12 @@ export class ChipView {
   private readonly captions: { label: Label; bounds: Bounds }[] = [];
   private readonly bounds: Bounds;
 
-  constructor(readonly machine: Machine, lib: Library, private readonly mats: WireMaterials) {
+  constructor(readonly machine: Machine, lib: Library, private readonly mats: WireMaterials, silicon: SiliconMode = { on: false }) {
     this.def = lib.get('Calculator');
     const { circuit, sim } = machine;
     this.playback = new Playback(Array.from({ length: circuit.netCount }, (_, i) => sim.get(i)));
     this.nets = new NetWires(this.playback);
-    this.ctx = { lib, circuit, mats, nets: this.nets, playback: this.playback, fadeSec: FADE_SEC };
+    this.ctx = { lib, circuit, mats, nets: this.nets, playback: this.playback, fadeSec: FADE_SEC, silicon };
     const [w, h] = this.def.size;
     const left = (-w * UNIT) / 2;
     const top = (h * UNIT) / 2;

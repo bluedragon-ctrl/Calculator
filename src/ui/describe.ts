@@ -1,4 +1,5 @@
 // Hover tooltip contents: name, one sentence, current value (DESIGN.md §2).
+import { crossText as X, layerNotes, layerTips } from '../content/silicon';
 import { tooltipText as T, wireBlurb } from '../content/tooltips';
 import { busValue } from '../sim/bus';
 import { inputPins, outputPins } from '../sim/library';
@@ -101,6 +102,25 @@ export function describe(hit: BenchHit | ChipHit, host: Bench | ChipView): Toolt
         body: `${T.cap} ${T.capNote}`,
         values: [`Charge: ${Math.round(hit.charge * 100)}%`],
       };
+    case 'cross':
+      return {
+        title: X.tipTitle,
+        body: X.tip(hit.type),
+        values: [hit.on ? X.channelOn : X.channelOff],
+      };
+    case 'layer': {
+      const tip = layerTips[hit.layer];
+      const node = hit.node;
+      const values: string[] = [];
+      if (node) {
+        const name = node.startsWith('in:') ? `input ${node.slice(3)}` : node === 'OUT' ? 'the output' : node;
+        values.push(`Connected to ${name}`);
+      }
+      if (hit.value !== null) values.push(`Value: ${formatBit(hit.value)}`);
+      else if (node && (hit.layer === 'pdiff' || hit.layer === 'ndiff')) values.push('Value: not connected');
+      const internal = node && /^[pn]\d$/.test(node) ? ` ${layerNotes.internal}` : '';
+      return { title: tip.title, body: tip.body + internal, values };
+    }
     case 'switch':
     case 'lamp': {
       const bench = host as Bench;

@@ -13,9 +13,11 @@ import { fitView, FADE_SEC, type Bounds } from './lod';
 import { BLOOM_BOOST, LABEL, WIRE_OFF, WIRE_ON } from './palette';
 import { Playback } from './playback';
 import type { View } from './stage';
-import { ComponentView, distToPolyline, NetWires, type Hit, type ViewContext, type ViewRect } from './views';
+import { ComponentView, distToPolyline, NetWires, type Hit, type SiliconMode, type ViewContext, type ViewRect } from './views';
 import { makeLine, Wire, type WireMaterials } from './wires';
 import type { Line2 } from 'three/addons/lines/Line2.js';
+import { CrossSectionView } from './crossSection';
+import { CALLOUT_ROOM } from '../circuits/crossSection';
 
 /** Preferred world size of the component box on the bench… */
 const BOX_W = 6;
@@ -49,7 +51,11 @@ interface Lamp {
 }
 
 /** Things on the bench itself (outside the component) that can be hovered. */
-export type BenchHit = Hit | { kind: 'switch'; pin: string; value: Bit } | { kind: 'lamp'; pin: string; value: Bit };
+export type BenchHit =
+  | Hit
+  | { kind: 'switch'; pin: string; value: Bit }
+  | { kind: 'lamp'; pin: string; value: Bit }
+  | { kind: 'cross'; type: 'n' | 'p'; on: boolean };
 
 export class Bench {
   readonly object = new Group();
@@ -72,10 +78,11 @@ export class Bench {
   private readonly square = new PlaneGeometry(1, 1);
   private readonly disc = new CircleGeometry(1, 32);
   private readonly bounds: [number, number, number, number];
+  private cross: CrossSectionView | null = null;
   /** Clock ticks since this bench was opened. */
   ticks = 0;
 
-  constructor(readonly def: ComponentDef, lib: Library, private readonly mats: WireMaterials) {
+  constructor(readonly def: ComponentDef, lib: Library, private readonly mats: WireMaterials, silicon: SiliconMode = { on: false }) {
     // A bench shows how its component is built, so a flip-flop (behavioural in the full
     // machine) is simulated gate by gate here.
     this.circuit = flatten(def, lib, { structural: def.simulateAs === 'behavior' });
@@ -88,7 +95,7 @@ export class Bench {
     const [w, h] = [def.size[0] * unit, def.size[1] * unit];
     const left = -w / 2;
     const top = h / 2;
-    this.ctx = { lib, circuit: this.circuit, mats, nets: this.nets, playback: this.playback, fadeSec: FADE_SEC };
+    this.ctx = { lib, circuit: this.circuit, mats, nets: this.nets, playback: this.playback, fadeSec: FADE_SEC, silicon };
     this.view = new ComponentView(this.ctx, def, '', left, top, unit);
     this.view.group.position.set(left, top, 0);
     this.view.group.scale.setScalar(unit);
@@ -172,9 +179,44 @@ export class Bench {
 
   /** The view that frames the whole bench, for a canvas with this aspect ratio (width / height). */
   homeView(aspect: number): View {
-    const [l, b, r, t] = this.bounds;
+    let [l, b, r, t] = this.bounds;
+    if (this.cross) {
+      const [cl, cb, cr] = this.cross.worldBounds;
+      [l, b, r] = [Math.min(l, cl), Math.min(b, cb), Math.max(r, cr)];
+    }
     // Extra room at the top for the breadcrumb bar.
     return fitView([l - 1, b - 1, r + 1, t + 1 + (t - b) * 0.06] as Bounds, aspect, 1.08);
+  }
+
+  /** A single-transistor bench can show its cross-section (DESIGN.md §6.2a). */
+  get hasCrossSection(): boolean {
+    return !!this.def.cmos && !this.def.cmos.pullDown;
+  }
+
+  get crossSectionShown(): boolean {
+    return !!this.cross;
+  }
+
+  /** Show or hide the side view below the bench. */
+  setCrossSection(on: boolean): void {
+    if (!this.hasCrossSection || on === !!this.cross) return;
+    if (on) {
+      const scale = 0.85;
+      const [l, b, r] = this.bounds;
+      const w = (20 + CALLOUT_ROOM) * scale;
+      this.cross = new CrossSectionView(this.def.cmos!.upType ?? 'p', this.mats, (l + r) / 2 - w / 2, b - 3, scale);
+      this.object.add(this.cross.group);
+    } else {
+      this.object.remove(this.cross!.group);
+      this.cross!.dispose();
+      this.cross = null;
+    }
+  }
+
+  /** The transistor of a single-transistor bench conducts (as displayed). */
+  private get conducting(): boolean {
+    const g = this.playback.value(this.circuit.inputs[inputPins(this.def)[0]]);
+    return (this.def.cmos!.upType ?? 'p') === 'n' ? g === 1 : g === 0;
   }
 
   setSlowMotion(msPerDelta: number): void {
@@ -273,6 +315,10 @@ export class Bench {
     this.view.update(view, dtMs / 1000);
     this.nets.update();
     this.refreshControls();
+    if (this.cross) {
+      const g = this.playback.value(this.circuit.inputs[inputPins(this.def)[0]]);
+      this.cross.update(g, this.outputValue(outputPins(this.def)[0]), this.conducting, view.pxPerWorld);
+    }
   }
 
   /** Re-apply materials after a quality change. */
@@ -290,6 +336,7 @@ export class Bench {
     }
     const inside = this.view.hit(x, y, tol);
     if (inside) return inside;
+    if (this.cross?.contains(x, y)) return { kind: 'cross', type: this.def.cmos!.upType ?? 'p', on: this.conducting };
     for (const w of this.benchWires) {
       if (distToPolyline([x, y], w.pts) <= tol) {
         const isIn = this.def.pins[w.pin].dir === 'in';
@@ -327,6 +374,7 @@ export class Bench {
   }
 
   dispose(): void {
+    this.cross?.dispose();
     this.view.dispose();
     for (const w of this.wires) w.dispose();
     for (const s of this.switches) s.wave?.geometry.dispose();

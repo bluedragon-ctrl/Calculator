@@ -33,6 +33,26 @@ export const busPanelText = {
 
 export const benches: BenchText[] = [
   {
+    component: 'NMOS',
+    label: 'N transistor',
+    title: 'The switch: an N-type transistor',
+    steps: [
+      'A transistor is a tap controlled by a wire. Flip switch G (the gate) and watch the lamp.',
+      'This N-type transistor conducts when its gate is 1. Then power flows through it and the lamp lights.',
+      'Zoom in to see its symbol. Click Silicon (top right) to see it from above, as it is built on the chip.',
+      'Click "Show cross-section" to cut it open and look from the side. A glowing channel appears when it conducts.',
+    ],
+  },
+  {
+    component: 'PMOS',
+    label: 'P transistor',
+    title: 'The opposite switch: a P-type transistor',
+    steps: [
+      'A P-type transistor is the opposite: it conducts when its gate is 0.',
+      'Every gate on the chip pairs P-types (connecting the output to power) with N-types (connecting it to ground).',
+    ],
+  },
+  {
     component: 'NOT',
     label: 'NOT',
     title: 'NOT: two switches',
