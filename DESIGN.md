@@ -268,6 +268,7 @@ Realism is added only where it is honest. CMOS logic contains **no resistors or 
 - **Load capacitance (transistor view, Phase 2):** a faint capacitor symbol at each gate's output. It fills or drains through the highlighted conducting path while the spark travels. This shows the honest reason for the gate delay: charging the tiny unwanted capacitance of the wires. It is purely visual and mapped to the 1-delta delay, with no analog simulation.
 - **Standard transistor symbols (Phase 2):** MOSFET symbols closer to textbooks replace the simplified ones. The switch icons stay.
 - **Silicon view (Phase 4b):** a "Schematic | Silicon" toggle at gate and transistor level. It shows a stylised top-down layout: n/p diffusion (green), polysilicon gates (red), metal (blue), contacts (grey). It is generated from the same series/parallel description as the CMOS schematics, as a standard cell: PMOS row on top, NMOS row at the bottom, inputs as vertical poly stripes. Values light up exactly as in the schematic. The single-transistor bench gets an optional cross-section. It is opt-in, with a short legend, so readability does not suffer.
+- **Real-chip views (Phase 4c):** the toggle extends to every level inside the chip: a stylised die floorplan at chip level and cell miniatures on closed gates. The device world gets an opt-in LCD-segment cutaway. See Phase 4c in §9.
 - **Reality-check cards:** older logic families (RTL/TTL) did use resistors; a 7400-family chip contains exactly four NAND gates (= our XOR).
 
 ### 6.3 Semantic zoom (level of detail)
@@ -449,6 +450,17 @@ Encoder, key class decoder, muxes, PLA control unit with rulebook view, display 
 "Schematic | Silicon" toggle with generated standard-cell layouts for the primitives (§6.2a), consistent values in both views, a legend, and the single-transistor cross-section.
 **Done when:** every primitive has a silicon layout whose transistors match its CMOS netlist (test), and toggling never changes values or zoom position.
 
+### Phase 4c: Real-chip views
+Make the "real" view useful at every level inside the chip (§6.2a), not only at transistor level:
+- **Die view (chip level):** the chip as a stylised silicon die. One region per block, area to scale with its transistor count; gate blocks as rows of cells, ROM and PLA as regular grids; bond pads on the edge and bond wires to the package pins. Each block's pattern is baked into one texture (performance). Blocks glow while they are switching. Labels stay on top and unbloomed. A note says "a sketch: sizes to scale, wiring not drawn".
+- **Cell miniatures (gate level):** with the toggle on, closed gate boxes show a small static copy of their cell layout instead of the gate symbol.
+- **Dive transition:** package lid off → die with bond wires → fade into the block diagram.
+- **Display close-up (device world):** an opt-in cutaway of one LCD segment (glass, electrodes, liquid crystal, polarisers); the segment darkens when its wire is 1. The tooltip notes that real calculators multiplex segment wires and ours does not.
+- **Optional, if time allows:** keypad cutaway (rubber dome, carbon pad, contacts) and package cutaway (lead frame, bond wires, die).
+- **Not in scope:** composite parts drawn as placed and routed cell rows (needs a real placer and router to be honest; the cell miniatures carry the idea).
+
+**Done when:** inside the chip the toggle is always visible and every level changes visibly when it is flipped (chip → die view, gate level → cell miniatures, transistor level → layout); die regions match block transistor counts (test); miniatures are the same layouts as the tested silicon cells (test); toggling never changes values or zoom position; 60 fps on High holds on the chip overview with the die view on.
+
 ### Phase 5: Learning layer
 Mission system and the 14 missions, glossary, reality-check cards, break-it mode, detective mode, progress saving, first-visit onboarding.
 **Done when:** every mission is completable, and mission-condition tests pass.
@@ -546,3 +558,4 @@ A tiny stored-program CPU (~8 instructions) running the calculator as a program 
 | Explore menu and breadcrumb (UI review) | The panel's row of scene buttons became one grouped `<select>` ("Explore"), which also replaces the "Lab bench" heading and the calculator/device panel titles (bench lesson titles such as "NAND: the Lego brick" stay). The breadcrumb now shows only the zoom path inside the scene (no "Calculator" / "Lab bench" root); its first item zooms out to the whole scene. The device world keeps "Calculator › Circuit board". After choosing, the menu loses focus so letters and digits keep driving the bench and calculator | |
 | Fit view (UI review) | The footer's "⌂ Home" button looked like "back to the start screen" but only reset the zoom. It is now a "⤢ Fit view" button in front of the breadcrumb (hidden in the device world); the Home key does the same | |
 | Silicon toggle visibility (UI review) | Shown only when an opened gate (a transistor view) is on screen, the only case where switching changes the picture. Before, it showed whenever the zoomed part contained gates, e.g. on the chip overview (the M-lamp NOT sits directly in the chip), where nothing visibly changed | |
+| Real-chip views (after UI review) | New Phase 4c before Phase 5: die view at chip level, cell miniatures on closed gates, die step in the dive transition, LCD-segment cutaway; keypad/package cutaways optional; placed-and-routed composite parts out of scope. Reason: the silicon toggle only changed something at transistor level, so it felt broken elsewhere, and students never saw how the blocks sit on a real die | Toggle name ("Schematic \| Silicon" vs "Diagram \| Real chip"): decide at the start of Phase 4c |
